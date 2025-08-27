@@ -18,13 +18,23 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	jmapClient := jmap.NewClient(cfg.JMAP.Endpoint, cfg.JMAP.APIToken)
-
-	log.Println("Authenticating with JMAP server...")
-	if err := jmapClient.Authenticate(); err != nil {
-		log.Fatalf("Failed to authenticate: %v", err)
+	var jmapClient jmap.JMAPClient
+	
+	if cfg.MockMode {
+		log.Println("Starting in MOCK MODE - using sample data")
+		jmapClient = jmap.NewMockClient()
+	} else {
+		log.Println("Connecting to Fastmail JMAP server...")
+		realClient := jmap.NewClient(cfg.JMAP.Endpoint, cfg.JMAP.APIToken)
+		
+		log.Println("Authenticating with JMAP server...")
+		if err := realClient.Authenticate(); err != nil {
+			log.Fatalf("Failed to authenticate: %v", err)
+		}
+		log.Println("Authentication successful!")
+		
+		jmapClient = realClient
 	}
-	log.Println("Authentication successful!")
 
 	srv, err := server.New(cfg, jmapClient)
 	if err != nil {

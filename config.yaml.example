@@ -16,3 +16,8 @@ dry_run: true
 
 # Default similarity threshold (0-100)
 default_similarity: 75
+
+# MOCK MODE - Set to true to use sample data instead of real Fastmail account
+# When enabled, no real JMAP connection is made and sample emails are used
+# Perfect for testing and development
+mock_mode: false

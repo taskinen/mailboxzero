@@ -18,6 +18,7 @@ type Config struct {
 	} `yaml:"jmap"`
 	DryRun            bool `yaml:"dry_run"`
 	DefaultSimilarity int  `yaml:"default_similarity"`
+	MockMode          bool `yaml:"mock_mode"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -43,12 +44,15 @@ func (c *Config) validate() error {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}
 
-	if c.JMAP.Endpoint == "" {
-		return fmt.Errorf("JMAP endpoint is required")
-	}
+	// In mock mode, JMAP credentials are not required
+	if !c.MockMode {
+		if c.JMAP.Endpoint == "" {
+			return fmt.Errorf("JMAP endpoint is required")
+		}
 
-	if c.JMAP.APIToken == "" {
-		return fmt.Errorf("JMAP API token is required")
+		if c.JMAP.APIToken == "" {
+			return fmt.Errorf("JMAP API token is required")
+		}
 	}
 
 	if c.DefaultSimilarity < 0 || c.DefaultSimilarity > 100 {

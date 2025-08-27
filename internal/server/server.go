@@ -17,7 +17,7 @@ import (
 
 type Server struct {
 	config     *config.Config
-	jmapClient *jmap.Client
+	jmapClient jmap.JMAPClient
 	templates  *template.Template
 }
 
@@ -29,7 +29,7 @@ type PageData struct {
 	SelectedEmailID   string
 }
 
-func New(cfg *config.Config, jmapClient *jmap.Client) (*Server, error) {
+func New(cfg *config.Config, jmapClient jmap.JMAPClient) (*Server, error) {
 	templates, err := template.ParseGlob("web/templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)

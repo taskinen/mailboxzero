@@ -1,0 +1,22 @@
+# Mailbox Zero Mock Configuration
+# Copy this file to config.yaml to run in mock mode for testing
+
+server:
+  port: 8080
+  host: "localhost"
+
+# JMAP settings are not required in mock mode
+jmap:
+  endpoint: ""
+  api_token: ""
+
+# IMPORTANT: Keep dry_run true in mock mode for safety
+dry_run: true
+
+# Default similarity threshold (0-100)
+default_similarity: 75
+
+# MOCK MODE - Set to true to use sample data instead of real Fastmail account
+# When enabled, no real JMAP connection is made and sample emails are used
+# Perfect for testing and development
+mock_mode: true

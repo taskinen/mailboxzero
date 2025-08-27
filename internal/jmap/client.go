@@ -9,6 +9,18 @@ import (
 	"time"
 )
 
+// JMAPClient defines the interface for JMAP operations
+type JMAPClient interface {
+	Authenticate() error
+	GetPrimaryAccount() string
+	GetMailboxes() ([]Mailbox, error)
+	GetInboxEmails(limit int) ([]Email, error)
+	GetInboxEmailsPaginated(limit, offset int) ([]Email, error)
+	GetInboxEmailsWithCount(limit int) (*InboxInfo, error)
+	GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo, error)
+	ArchiveEmails(emailIDs []string, dryRun bool) error
+}
+
 type Client struct {
 	endpoint   string
 	apiToken   string

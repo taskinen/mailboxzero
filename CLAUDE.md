@@ -209,8 +209,46 @@ go run main.go -config custom-config.yaml
 go build -o mailboxzero main.go
 ```
 
+### Mock Mode for Testing
+
+For development and testing purposes, you can run the application in mock mode:
+
+```bash
+# Copy the mock configuration
+cp config-mock.yaml.example config.yaml
+
+# Run in mock mode - no Fastmail credentials needed
+go run main.go
+```
+
+**Mock Mode Features:**
+- Uses realistic sample email data (40+ emails from various senders)
+- No real JMAP connection required
+- Sample emails include groups of similar messages for testing similarity matching
+- Simulates archiving operations without affecting real emails
+- Perfect for development, testing, and demonstrations
+- Provides consistent test data across runs
+
+**Mock Configuration:**
+```yaml
+server:
+  port: 8080
+  host: "localhost"
+
+jmap:
+  endpoint: ""      # Not required in mock mode
+  api_token: ""     # Not required in mock mode
+
+dry_run: true       # Keep enabled for safety
+default_similarity: 75
+mock_mode: true     # Enable mock mode
+```
+
 ### Testing Commands
 ```bash
+# Quick start with mock data (no Fastmail account required)
+go run main.go -config config-mock.yaml.example
+
 # Run all tests (when implemented)
 go test ./...
 
