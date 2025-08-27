@@ -139,11 +139,76 @@ header h1 {
     font-size: 1.3em;
 }
 
+.controls-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
 .sort-controls {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 0.9em;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+}
+
+.per-page-select {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    color: #333;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    min-width: 80px;
+}
+
+.per-page-select:hover {
+    border-color: #bbb;
+}
+
+.per-page-select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.pagination-bar {
+    padding: 10px 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    background-color: #f8f9fa;
+    font-size: 0.9em;
+}
+
+.pagination-info {
+    color: #666;
+    font-weight: 500;
+}
+
+.pagination-navigation {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.page-info {
+    color: #666;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .sort-controls label {
@@ -486,13 +551,32 @@ header h1 {
         gap: 15px;
     }
     
-    .sort-controls {
-        align-self: stretch;
-        justify-content: space-between;
+    .controls-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        width: 100%;
     }
     
-    .sort-select {
+    .sort-controls, .pagination-controls {
+        justify-content: space-between;
+        width: 100%;
+    }
+    
+    .sort-select, .per-page-select {
         min-width: 120px;
+    }
+    
+    .pagination-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    .pagination-navigation {
+        justify-content: space-between;
+        width: 100%;
     }
     
     .modal {

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 
 	"mailboxzero/internal/config"
 	"mailboxzero/internal/jmap"
@@ -72,7 +73,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetEmails(w http.ResponseWriter, r *http.Request) {
-	inboxInfo, err := s.jmapClient.GetInboxEmailsWithCount(100)
+	limit := 100
+	offset := 0
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	inboxInfo, err := s.jmapClient.GetInboxEmailsWithCountPaginated(limit, offset)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get emails: %v", err), http.StatusInternalServerError)
 		return

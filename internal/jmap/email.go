@@ -149,6 +149,10 @@ func (c *Client) GetMailboxes() ([]Mailbox, error) {
 }
 
 func (c *Client) GetInboxEmails(limit int) ([]Email, error) {
+	return c.GetInboxEmailsPaginated(limit, 0)
+}
+
+func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 	accountID := c.GetPrimaryAccount()
 	if accountID == "" {
 		return nil, fmt.Errorf("no primary account found")
@@ -171,17 +175,23 @@ func (c *Client) GetInboxEmails(limit int) ([]Email, error) {
 		return nil, fmt.Errorf("inbox not found")
 	}
 
+	queryParams := map[string]interface{}{
+		"accountId": accountID,
+		"filter": map[string]interface{}{
+			"inMailbox": inboxID,
+		},
+		"sort": []map[string]interface{}{
+			{"property": "receivedAt", "isAscending": false},
+		},
+		"limit": limit,
+	}
+
+	if offset > 0 {
+		queryParams["position"] = offset
+	}
+
 	methodCalls := []MethodCall{
-		{"Email/query", map[string]interface{}{
-			"accountId": accountID,
-			"filter": map[string]interface{}{
-				"inMailbox": inboxID,
-			},
-			"sort": []map[string]interface{}{
-				{"property": "receivedAt", "isAscending": false},
-			},
-			"limit": limit,
-		}, "0"},
+		{"Email/query", queryParams, "0"},
 		{"Email/get", map[string]interface{}{
 			"accountId": accountID,
 			"#ids":      map[string]interface{}{"resultOf": "0", "name": "Email/query", "path": "/ids"},
@@ -233,6 +243,10 @@ type InboxInfo struct {
 }
 
 func (c *Client) GetInboxEmailsWithCount(limit int) (*InboxInfo, error) {
+	return c.GetInboxEmailsWithCountPaginated(limit, 0)
+}
+
+func (c *Client) GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo, error) {
 	accountID := c.GetPrimaryAccount()
 	if accountID == "" {
 		return nil, fmt.Errorf("no primary account found")
@@ -257,7 +271,7 @@ func (c *Client) GetInboxEmailsWithCount(limit int) (*InboxInfo, error) {
 		return nil, fmt.Errorf("inbox not found")
 	}
 
-	emails, err := c.GetInboxEmails(limit)
+	emails, err := c.GetInboxEmailsPaginated(limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get inbox emails: %w", err)
 	}

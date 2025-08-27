@@ -8,6 +8,11 @@ class MailboxZero {
         this.similarSortBy = 'date'; // Default sort by date (newest first)
         this.totalInboxCount = 0; // Track total count from server
         
+        // Pagination state
+        this.currentPage = 1;
+        this.perPage = 100;
+        this.totalPages = 1;
+        
         this.initializeElements();
         this.attachEventListeners();
         this.initializeTitles();
@@ -46,6 +51,16 @@ class MailboxZero {
         this.previewFrom = document.getElementById('preview-from');
         this.previewDate = document.getElementById('preview-date');
         this.previewBody = document.getElementById('preview-body');
+        
+        // Pagination elements
+        this.perPageSelect = document.getElementById('per-page-select');
+        this.showingStart = document.getElementById('showing-start');
+        this.showingEnd = document.getElementById('showing-end');
+        this.totalEmailsSpan = document.getElementById('total-emails');
+        this.currentPageSpan = document.getElementById('current-page');
+        this.totalPagesSpan = document.getElementById('total-pages');
+        this.prevPageBtn = document.getElementById('prev-page-btn');
+        this.nextPageBtn = document.getElementById('next-page-btn');
         
         // Preview state
         this.previewTimeout = null;
@@ -91,13 +106,37 @@ class MailboxZero {
         document.addEventListener('scroll', () => this.hideEmailPreview(), true);
         document.addEventListener('click', () => this.hideEmailPreview());
         document.addEventListener('keydown', () => this.hideEmailPreview());
+        
+        // Pagination event listeners
+        this.perPageSelect.addEventListener('change', (e) => {
+            this.perPage = parseInt(e.target.value);
+            this.currentPage = 1; // Reset to first page
+            this.loadEmails();
+        });
+        
+        this.prevPageBtn.addEventListener('click', () => {
+            if (this.currentPage > 1) {
+                this.currentPage--;
+                this.loadEmails();
+            }
+        });
+        
+        this.nextPageBtn.addEventListener('click', () => {
+            if (this.currentPage < this.totalPages) {
+                this.currentPage++;
+                this.loadEmails();
+            }
+        });
     }
 
     async loadEmails() {
         try {
             this.showLoading(this.inboxList, 'Loading emails...');
             
-            const response = await fetch('/api/emails');
+            const offset = (this.currentPage - 1) * this.perPage;
+            const url = `/api/emails?limit=${this.perPage}&offset=${offset}`;
+            
+            const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -105,8 +144,13 @@ class MailboxZero {
             const inboxInfo = await response.json();
             this.emails = inboxInfo.emails;
             this.totalInboxCount = inboxInfo.totalCount;
+            
+            // Calculate pagination
+            this.totalPages = Math.ceil(this.totalInboxCount / this.perPage);
+            
             this.renderEmails(this.emails, this.inboxList, false);
             this.updateTitles();
+            this.updatePaginationInfo();
         } catch (error) {
             console.error('Error loading emails:', error);
             this.showError(this.inboxList, 'Failed to load emails. Please check your configuration.');
@@ -434,6 +478,21 @@ class MailboxZero {
         // Update similar emails title with count
         const similarCount = this.similarEmails.length;
         this.similarTitle.textContent = `Similar Emails (${similarCount})`;
+    }
+
+    updatePaginationInfo() {
+        const start = this.emails.length > 0 ? ((this.currentPage - 1) * this.perPage) + 1 : 0;
+        const end = Math.min(start + this.emails.length - 1, this.totalInboxCount);
+        
+        this.showingStart.textContent = start;
+        this.showingEnd.textContent = end;
+        this.totalEmailsSpan.textContent = this.totalInboxCount;
+        this.currentPageSpan.textContent = this.currentPage;
+        this.totalPagesSpan.textContent = this.totalPages;
+        
+        // Update navigation buttons
+        this.prevPageBtn.disabled = this.currentPage <= 1;
+        this.nextPageBtn.disabled = this.currentPage >= this.totalPages;
     }
 
     showArchiveModal() {

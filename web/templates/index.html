@@ -41,16 +41,37 @@
             <div class="left-pane">
                 <div class="pane-header">
                     <h2 id="inbox-title">Inbox</h2>
-                    <div class="sort-controls">
-                        <label for="inbox-sort">Sort by:</label>
-                        <select id="inbox-sort" class="sort-select">
-                            <option value="date">Date (newest first)</option>
-                            <option value="date-asc">Date (oldest first)</option>
-                            <option value="subject">Subject (A-Z)</option>
-                            <option value="subject-desc">Subject (Z-A)</option>
-                            <option value="sender">Sender (A-Z)</option>
-                            <option value="sender-desc">Sender (Z-A)</option>
-                        </select>
+                    <div class="controls-row">
+                        <div class="sort-controls">
+                            <label for="inbox-sort">Sort by:</label>
+                            <select id="inbox-sort" class="sort-select">
+                                <option value="date">Date (newest first)</option>
+                                <option value="date-asc">Date (oldest first)</option>
+                                <option value="subject">Subject (A-Z)</option>
+                                <option value="subject-desc">Subject (Z-A)</option>
+                                <option value="sender">Sender (A-Z)</option>
+                                <option value="sender-desc">Sender (Z-A)</option>
+                            </select>
+                        </div>
+                        <div class="pagination-controls">
+                            <label for="per-page-select">Per page:</label>
+                            <select id="per-page-select" class="per-page-select">
+                                <option value="50">50</option>
+                                <option value="100" selected>100</option>
+                                <option value="200">200</option>
+                                <option value="500">500</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="pagination-bar">
+                    <div class="pagination-info">
+                        Showing <span id="showing-start">0</span>-<span id="showing-end">0</span> of <span id="total-emails">0</span>
+                    </div>
+                    <div class="pagination-navigation">
+                        <button id="prev-page-btn" class="btn btn-secondary" disabled>← Previous</button>
+                        <span class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></span>
+                        <button id="next-page-btn" class="btn btn-secondary" disabled>Next →</button>
                     </div>
                 </div>
                 <div class="email-list" id="inbox-list">
