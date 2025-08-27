@@ -2,7 +2,7 @@
 
 A Go-based web application that helps you clean up your Fastmail inbox by finding and archiving similar emails using JMAP protocol.
 
-<img width="1365" height="1079" alt="screenshot" src="https://github.com/user-attachments/assets/17799c16-900f-4fa3-b9a5-2208482384bb" />
+<img width="1457" height="1169" alt="SCR-20250827-psxl" src="https://github.com/user-attachments/assets/2f1fe630-5ba7-4c8a-a610-6f32388654b5" />
 
 ## Features
 
