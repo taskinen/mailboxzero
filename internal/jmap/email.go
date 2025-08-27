@@ -200,6 +200,9 @@ func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 				"bodyValues", "textBody", "htmlBody",
 			},
 			"bodyProperties": []string{"value", "isEncodingProblem", "isTruncated"},
+			"fetchTextBodyValues": true,
+			"fetchHTMLBodyValues": true,
+			"maxBodyValueBytes": 50000,
 		}, "1"},
 	}
 
@@ -361,12 +364,39 @@ func parseEmail(data map[string]interface{}) Email {
 		}
 	}
 
+	// Parse textBody structure first
+	if textBodyData, ok := data["textBody"].([]interface{}); ok {
+		for _, part := range textBodyData {
+			if partMap, ok := part.(map[string]interface{}); ok {
+				email.TextBody = append(email.TextBody, BodyPart{
+					PartID: getString(partMap, "partId"),
+					Type:   getString(partMap, "type"),
+				})
+			}
+		}
+	}
+
+	// Parse htmlBody structure
+	if htmlBodyData, ok := data["htmlBody"].([]interface{}); ok {
+		for _, part := range htmlBodyData {
+			if partMap, ok := part.(map[string]interface{}); ok {
+				email.HTMLBody = append(email.HTMLBody, BodyPart{
+					PartID: getString(partMap, "partId"),
+					Type:   getString(partMap, "type"),
+				})
+			}
+		}
+	}
+
+	// Parse bodyValues
 	if bodyValues, ok := data["bodyValues"].(map[string]interface{}); ok {
 		email.BodyValues = make(map[string]BodyValue)
 		for key, value := range bodyValues {
 			if bodyMap, ok := value.(map[string]interface{}); ok {
 				email.BodyValues[key] = BodyValue{
-					Value: getString(bodyMap, "value"),
+					Value:             getString(bodyMap, "value"),
+					IsEncodingProblem: getBool(bodyMap, "isEncodingProblem"),
+					IsTruncated:       getBool(bodyMap, "isTruncated"),
 				}
 			}
 		}
@@ -390,4 +420,11 @@ func getInt(data map[string]interface{}, key string) int {
 		return value
 	}
 	return 0
+}
+
+func getBool(data map[string]interface{}, key string) bool {
+	if value, ok := data[key].(bool); ok {
+		return value
+	}
+	return false
 }

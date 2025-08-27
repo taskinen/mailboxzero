@@ -62,9 +62,15 @@ class MailboxZero {
         this.prevPageBtn = document.getElementById('prev-page-btn');
         this.nextPageBtn = document.getElementById('next-page-btn');
         
+        // Preview toggle checkbox
+        this.previewToggleCheckbox = document.getElementById('preview-toggle-checkbox');
+        
         // Preview state
         this.previewTimeout = null;
+        this.hidePreviewTimeout = null;
         this.currentPreviewEmail = null;
+        this.isMouseOverPreview = false;
+        this.previewsEnabled = true;
     }
 
     initializeTitles() {
@@ -102,10 +108,45 @@ class MailboxZero {
         this.cancelArchiveBtn.addEventListener('click', () => this.hideArchiveModal());
         this.modalOverlay.addEventListener('click', () => this.hideArchiveModal());
         
-        // Hide preview when scrolling or clicking elsewhere
-        document.addEventListener('scroll', () => this.hideEmailPreview(), true);
-        document.addEventListener('click', () => this.hideEmailPreview());
-        document.addEventListener('keydown', () => this.hideEmailPreview());
+        // Preview toggle event listener
+        this.previewToggleCheckbox.addEventListener('change', (e) => {
+            this.previewsEnabled = e.target.checked;
+            if (!this.previewsEnabled) {
+                this.hideEmailPreview();
+            }
+        });
+        
+        // Hide preview when clicking elsewhere or pressing keys
+        document.addEventListener('click', (e) => {
+            // Don't hide if clicking inside the preview popup
+            if (!e.target.closest('.email-preview-popup')) {
+                this.hideEmailPreview();
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            // Hide on escape key
+            if (e.key === 'Escape') {
+                this.hideEmailPreview();
+            }
+        });
+        
+        // Add mouse tracking for preview popup
+        this.previewPopup.addEventListener('mouseenter', () => {
+            this.isMouseOverPreview = true;
+            // Clear any pending hide timeout
+            if (this.hidePreviewTimeout) {
+                clearTimeout(this.hidePreviewTimeout);
+                this.hidePreviewTimeout = null;
+            }
+        });
+        
+        this.previewPopup.addEventListener('mouseleave', () => {
+            this.isMouseOverPreview = false;
+            // Give a small delay before hiding
+            this.hidePreviewTimeout = setTimeout(() => {
+                this.hideEmailPreview();
+            }, 100);
+        });
         
         // Pagination event listeners
         this.perPageSelect.addEventListener('change', (e) => {
@@ -362,11 +403,21 @@ class MailboxZero {
             
             // Add preview hover functionality
             item.addEventListener('mouseenter', (e) => {
+                // Cancel any pending hide
+                if (this.hidePreviewTimeout) {
+                    clearTimeout(this.hidePreviewTimeout);
+                    this.hidePreviewTimeout = null;
+                }
                 this.showEmailPreview(e, email);
             });
             
-            item.addEventListener('mouseleave', () => {
-                this.hideEmailPreview();
+            item.addEventListener('mouseleave', (e) => {
+                // Don't hide immediately if mouse is moving to the preview popup
+                this.hidePreviewTimeout = setTimeout(() => {
+                    if (!this.isMouseOverPreview) {
+                        this.hideEmailPreview();
+                    }
+                }, 150);
             });
             
             item.addEventListener('mousemove', (e) => {
@@ -527,9 +578,18 @@ class MailboxZero {
 
     // Email Preview Methods
     showEmailPreview(event, email) {
-        // Clear any existing timeout
+        // Don't show preview if previews are disabled
+        if (!this.previewsEnabled) {
+            return;
+        }
+        
+        // Clear any existing timeouts
         if (this.previewTimeout) {
             clearTimeout(this.previewTimeout);
+        }
+        if (this.hidePreviewTimeout) {
+            clearTimeout(this.hidePreviewTimeout);
+            this.hidePreviewTimeout = null;
         }
 
         // Set a delay before showing preview
@@ -543,8 +603,13 @@ class MailboxZero {
             clearTimeout(this.previewTimeout);
             this.previewTimeout = null;
         }
+        if (this.hidePreviewTimeout) {
+            clearTimeout(this.hidePreviewTimeout);
+            this.hidePreviewTimeout = null;
+        }
         this.previewPopup.style.display = 'none';
         this.currentPreviewEmail = null;
+        this.isMouseOverPreview = false;
     }
 
     displayPreview(event, email) {
@@ -576,30 +641,65 @@ class MailboxZero {
     }
 
     loadPreviewBody(email) {
-        // First try to use existing body values if available
-        if (email.bodyValues) {
-            let bodyContent = '';
-            
-            // Try to get text content from bodyValues
+        let bodyContent = '';
+        
+        // First try to find text body content using textBody structure
+        if (email.bodyValues && email.textBody && email.textBody.length > 0) {
+            // Look for text parts first (preferred for preview)
+            for (const part of email.textBody) {
+                if (part.partId && email.bodyValues[part.partId]) {
+                    const bodyValue = email.bodyValues[part.partId];
+                    if (bodyValue.value && bodyValue.value.trim()) {
+                        bodyContent = bodyValue.value;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // If no text body, try HTML body but strip HTML tags
+        if (!bodyContent && email.bodyValues && email.htmlBody && email.htmlBody.length > 0) {
+            for (const part of email.htmlBody) {
+                if (part.partId && email.bodyValues[part.partId]) {
+                    const bodyValue = email.bodyValues[part.partId];
+                    if (bodyValue.value && bodyValue.value.trim()) {
+                        // Strip HTML tags for preview
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = bodyValue.value;
+                        bodyContent = tempDiv.textContent || tempDiv.innerText || '';
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Fallback: try any bodyValues content
+        if (!bodyContent && email.bodyValues) {
             for (const partId in email.bodyValues) {
                 const bodyValue = email.bodyValues[partId];
-                if (bodyValue.value) {
-                    bodyContent = bodyValue.value;
+                if (bodyValue.value && bodyValue.value.trim()) {
+                    // If it looks like HTML, strip tags
+                    if (bodyValue.value.includes('<') && bodyValue.value.includes('>')) {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = bodyValue.value;
+                        bodyContent = tempDiv.textContent || tempDiv.innerText || '';
+                    } else {
+                        bodyContent = bodyValue.value;
+                    }
                     break;
                 }
             }
-            
-            if (bodyContent) {
-                this.displayPreviewBody(bodyContent);
-                return;
-            }
         }
-
-        // Fallback to preview text if no body content
-        if (email.preview) {
-            this.displayPreviewBody(email.preview);
+        
+        // Final fallback to preview text
+        if (!bodyContent && email.preview) {
+            bodyContent = email.preview;
+        }
+        
+        if (bodyContent && bodyContent.trim()) {
+            this.displayPreviewBody(bodyContent);
         } else {
-            this.previewBody.innerHTML = '<div class="preview-loading">No preview available</div>';
+            this.previewBody.innerHTML = '<div class="preview-loading">No content available</div>';
         }
     }
 
@@ -607,7 +707,12 @@ class MailboxZero {
         // Clean and format the content
         let formattedContent = this.escapeHtml(content);
         
-        // Convert line breaks to paragraphs
+        // Show more content - truncate at 2000 characters instead of using full preview
+        if (formattedContent.length > 2000) {
+            formattedContent = formattedContent.substring(0, 2000) + '...';
+        }
+        
+        // Convert line breaks to paragraphs with better formatting
         const paragraphs = formattedContent.split(/\n\s*\n/).filter(p => p.trim());
         
         if (paragraphs.length > 1) {
@@ -617,6 +722,9 @@ class MailboxZero {
         } else {
             formattedContent = `<p>${formattedContent.replace(/\n/g, '<br>')}</p>`;
         }
+        
+        // Apply some basic email content formatting
+        formattedContent = this.enhanceEmailFormatting(formattedContent);
         
         this.previewBody.innerHTML = formattedContent;
     }
@@ -675,6 +783,29 @@ class MailboxZero {
         if (this.previewPopup.style.display === 'block') {
             this.positionPreviewPopup(event);
         }
+    }
+
+    enhanceEmailFormatting(content) {
+        // Add basic formatting for better readability
+        let formatted = content;
+        
+        // Format URLs (make them look like links without actually being clickable)
+        formatted = formatted.replace(/\b(https?:\/\/[\w\-\._~:\/?#\[\]@!\$&'\(\)*\+,;=.]+)/gi, 
+            '<span style="color: #3498db; text-decoration: underline;">$1</span>');
+        
+        // Format email addresses  
+        formatted = formatted.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, 
+            '<span style="color: #3498db;">$&</span>');
+        
+        // Bold text patterns (common email signatures)
+        formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        
+        // Format common patterns like "From:", "To:", "Subject:" in forwarded emails
+        formatted = formatted.replace(/^(From|To|Subject|Date|CC|BCC):\s*/gim, 
+            '<strong style="color: #666;">$1:</strong> ');
+        
+        return formatted;
     }
 }
 

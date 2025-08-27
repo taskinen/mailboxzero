@@ -373,6 +373,20 @@ header h1 {
     background-color: #c0392b;
 }
 
+.preview-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    cursor: pointer;
+    color: #333;
+    user-select: none;
+}
+
+.preview-toggle-label:hover {
+    color: #2c3e50;
+}
+
 .loading, .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -452,13 +466,16 @@ header h1 {
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
     border: 1px solid #e0e0e0;
-    max-width: 400px;
-    max-height: 300px;
+    max-width: 650px;
+    max-height: 500px;
+    min-width: 450px;
     z-index: 1001;
     padding: 0;
     display: none;
-    pointer-events: none;
-    user-select: none;
+    pointer-events: auto;
+    user-select: text;
+    font-size: 14px;
+    cursor: default;
 }
 
 .preview-header {
@@ -491,19 +508,51 @@ header h1 {
 .preview-body {
     padding: 15px 20px;
     font-size: 0.85em;
-    line-height: 1.5;
+    line-height: 1.6;
     color: #444;
     overflow-y: auto;
-    max-height: 200px;
+    max-height: 370px;
     word-wrap: break-word;
+    overflow-wrap: break-word;
+    scrollbar-width: thin;
+    scrollbar-color: #ccc #f5f5f5;
+}
+
+.preview-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.preview-body::-webkit-scrollbar-track {
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.preview-body::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+    border: 1px solid #f5f5f5;
+}
+
+.preview-body::-webkit-scrollbar-thumb:hover {
+    background: #bbb;
 }
 
 .preview-body p {
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .preview-body p:last-child {
     margin-bottom: 0;
+}
+
+.preview-body strong {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.preview-body em {
+    font-style: italic;
+    color: #555;
 }
 
 .preview-loading {
@@ -587,11 +636,14 @@ header h1 {
     
     /* Mobile adjustments for preview popup */
     .email-preview-popup {
-        max-width: calc(100vw - 40px);
-        max-height: 250px;
+        max-width: calc(100vw - 30px);
+        max-height: 400px;
+        min-width: 320px;
     }
     
     .preview-body {
-        max-height: 150px;
+        max-height: 270px;
+        padding: 12px 15px;
+        font-size: 0.9em;
     }
 }
