@@ -39,6 +39,17 @@ class MailboxZero {
         this.confirmArchiveBtn = document.getElementById('confirm-archive-btn');
         this.cancelArchiveBtn = document.getElementById('cancel-archive-btn');
         this.archiveCount = document.getElementById('archive-count');
+        
+        // Preview popup elements
+        this.previewPopup = document.getElementById('email-preview-popup');
+        this.previewSubject = document.getElementById('preview-subject');
+        this.previewFrom = document.getElementById('preview-from');
+        this.previewDate = document.getElementById('preview-date');
+        this.previewBody = document.getElementById('preview-body');
+        
+        // Preview state
+        this.previewTimeout = null;
+        this.currentPreviewEmail = null;
     }
 
     initializeTitles() {
@@ -75,6 +86,11 @@ class MailboxZero {
         this.confirmArchiveBtn.addEventListener('click', () => this.archiveEmails());
         this.cancelArchiveBtn.addEventListener('click', () => this.hideArchiveModal());
         this.modalOverlay.addEventListener('click', () => this.hideArchiveModal());
+        
+        // Hide preview when scrolling or clicking elsewhere
+        document.addEventListener('scroll', () => this.hideEmailPreview(), true);
+        document.addEventListener('click', () => this.hideEmailPreview());
+        document.addEventListener('keydown', () => this.hideEmailPreview());
     }
 
     async loadEmails() {
@@ -295,8 +311,24 @@ class MailboxZero {
         
         container.innerHTML = emailsHtml;
         
-        // Attach click listeners
+        // Attach click and hover listeners
         container.querySelectorAll('.email-item').forEach(item => {
+            const emailId = item.dataset.emailId;
+            const email = sortedEmails.find(e => e.id === emailId);
+            
+            // Add preview hover functionality
+            item.addEventListener('mouseenter', (e) => {
+                this.showEmailPreview(e, email);
+            });
+            
+            item.addEventListener('mouseleave', () => {
+                this.hideEmailPreview();
+            });
+            
+            item.addEventListener('mousemove', (e) => {
+                this.updatePreviewPosition(e);
+            });
+            
             if (withCheckboxes) {
                 // For similar emails, handle checkbox clicks
                 const checkbox = item.querySelector('.email-checkbox');
@@ -432,6 +464,158 @@ class MailboxZero {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // Email Preview Methods
+    showEmailPreview(event, email) {
+        // Clear any existing timeout
+        if (this.previewTimeout) {
+            clearTimeout(this.previewTimeout);
+        }
+
+        // Set a delay before showing preview
+        this.previewTimeout = setTimeout(() => {
+            this.displayPreview(event, email);
+        }, 300); // 300ms delay
+    }
+
+    hideEmailPreview() {
+        if (this.previewTimeout) {
+            clearTimeout(this.previewTimeout);
+            this.previewTimeout = null;
+        }
+        this.previewPopup.style.display = 'none';
+        this.currentPreviewEmail = null;
+    }
+
+    displayPreview(event, email) {
+        this.currentPreviewEmail = email;
+        
+        // Set basic info immediately
+        this.previewSubject.textContent = email.subject || '(No subject)';
+        this.previewFrom.textContent = this.getSenderName(email);
+        
+        const date = email.receivedAt ? 
+            new Date(email.receivedAt).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }) : '';
+        this.previewDate.textContent = date;
+
+        // Show loading state for body
+        this.previewBody.innerHTML = '<div class="preview-loading">Loading preview...</div>';
+        
+        // Position and show popup
+        this.positionPreviewPopup(event);
+        this.previewPopup.style.display = 'block';
+        
+        // Load email body content
+        this.loadPreviewBody(email);
+    }
+
+    loadPreviewBody(email) {
+        // First try to use existing body values if available
+        if (email.bodyValues) {
+            let bodyContent = '';
+            
+            // Try to get text content from bodyValues
+            for (const partId in email.bodyValues) {
+                const bodyValue = email.bodyValues[partId];
+                if (bodyValue.value) {
+                    bodyContent = bodyValue.value;
+                    break;
+                }
+            }
+            
+            if (bodyContent) {
+                this.displayPreviewBody(bodyContent);
+                return;
+            }
+        }
+
+        // Fallback to preview text if no body content
+        if (email.preview) {
+            this.displayPreviewBody(email.preview);
+        } else {
+            this.previewBody.innerHTML = '<div class="preview-loading">No preview available</div>';
+        }
+    }
+
+    displayPreviewBody(content) {
+        // Clean and format the content
+        let formattedContent = this.escapeHtml(content);
+        
+        // Convert line breaks to paragraphs
+        const paragraphs = formattedContent.split(/\n\s*\n/).filter(p => p.trim());
+        
+        if (paragraphs.length > 1) {
+            formattedContent = paragraphs
+                .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+                .join('');
+        } else {
+            formattedContent = `<p>${formattedContent.replace(/\n/g, '<br>')}</p>`;
+        }
+        
+        this.previewBody.innerHTML = formattedContent;
+    }
+
+    positionPreviewPopup(event) {
+        const popup = this.previewPopup;
+        
+        // Get mouse position relative to the page (including scroll offset)
+        const mouseX = event.clientX + window.scrollX;
+        const mouseY = event.clientY + window.scrollY;
+        
+        // Get viewport dimensions
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Set initial position to measure popup dimensions
+        popup.style.left = '0px';
+        popup.style.top = '0px';
+        
+        // Get popup dimensions (it's now visible but off screen)
+        const popupRect = popup.getBoundingClientRect();
+        const popupWidth = Math.max(popupRect.width, 300); // minimum 300px width
+        const popupHeight = Math.max(popupRect.height, 200); // minimum 200px height
+        
+        // Calculate position with offset from cursor
+        const offset = 15;
+        let left = mouseX + offset;
+        let top = mouseY + offset;
+        
+        // Get current scroll position and viewport bounds
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        const viewportRight = scrollX + viewportWidth;
+        const viewportBottom = scrollY + viewportHeight;
+        
+        // Adjust if popup would go off screen horizontally
+        if (left + popupWidth > viewportRight) {
+            left = mouseX - popupWidth - offset;
+        }
+        
+        // Adjust if popup would go off screen vertically
+        if (top + popupHeight > viewportBottom) {
+            top = mouseY - popupHeight - offset;
+        }
+        
+        // Ensure popup doesn't go off screen entirely
+        left = Math.max(scrollX + 10, Math.min(left, viewportRight - popupWidth - 10));
+        top = Math.max(scrollY + 10, Math.min(top, viewportBottom - popupHeight - 10));
+        
+        // Apply the position
+        popup.style.left = left + 'px';
+        popup.style.top = top + 'px';
+    }
+
+    updatePreviewPosition(event) {
+        if (this.previewPopup.style.display === 'block') {
+            this.positionPreviewPopup(event);
+        }
     }
 }
 

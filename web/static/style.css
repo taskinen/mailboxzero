@@ -380,6 +380,74 @@ header h1 {
     margin-top: 4px;
 }
 
+/* Email Preview Popup */
+.email-preview-popup {
+    position: absolute;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    border: 1px solid #e0e0e0;
+    max-width: 400px;
+    max-height: 300px;
+    z-index: 1001;
+    padding: 0;
+    display: none;
+    pointer-events: none;
+    user-select: none;
+}
+
+.preview-header {
+    padding: 15px 20px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+    border-radius: 8px 8px 0 0;
+}
+
+.preview-subject {
+    font-weight: 600;
+    font-size: 0.95em;
+    color: #2c3e50;
+    margin-bottom: 5px;
+    word-wrap: break-word;
+    line-height: 1.3;
+}
+
+.preview-from {
+    font-size: 0.85em;
+    color: #666;
+    margin-bottom: 3px;
+}
+
+.preview-date {
+    font-size: 0.8em;
+    color: #999;
+}
+
+.preview-body {
+    padding: 15px 20px;
+    font-size: 0.85em;
+    line-height: 1.5;
+    color: #444;
+    overflow-y: auto;
+    max-height: 200px;
+    word-wrap: break-word;
+}
+
+.preview-body p {
+    margin-bottom: 10px;
+}
+
+.preview-body p:last-child {
+    margin-bottom: 0;
+}
+
+.preview-loading {
+    padding: 40px 20px;
+    text-align: center;
+    color: #666;
+    font-size: 0.9em;
+}
+
 @media (max-width: 768px) {
     .email-interface {
         grid-template-columns: 1fr;
@@ -431,5 +499,15 @@ header h1 {
         margin: 20px;
         min-width: auto;
         max-width: calc(100vw - 40px);
+    }
+    
+    /* Mobile adjustments for preview popup */
+    .email-preview-popup {
+        max-width: calc(100vw - 40px);
+        max-height: 250px;
+    }
+    
+    .preview-body {
+        max-height: 150px;
     }
 }
