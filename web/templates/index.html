@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mailbox Zero - Email Cleanup Helper</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mailbox Zero</h1>
+            <div class="status-bar">
+                {{if .DryRun}}
+                    <div class="dry-run-warning">
+                        <strong>⚠️ DRY RUN MODE</strong> - No actual changes will be made
+                    </div>
+                {{end}}
+                <div class="controls">
+                    <label for="similarity-slider">Similarity: <span id="similarity-value">{{.DefaultSimilarity}}%</span></label>
+                    <input type="range" id="similarity-slider" min="0" max="100" value="{{.DefaultSimilarity}}" class="similarity-slider">
+                </div>
+            </div>
+            <div class="action-bar">
+                <div class="left-actions">
+                    <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+                    <button id="find-similar-btn" class="btn btn-primary">Find Similar Emails</button>
+                </div>
+                <div class="right-actions">
+                    <button id="clear-results-btn" class="btn btn-secondary" disabled>Clear Results</button>
+                    <label class="select-all-label">
+                        <input type="checkbox" id="select-all-checkbox" checked>
+                        Select All
+                    </label>
+                    <button id="archive-btn" class="btn btn-danger" disabled>Archive Selected</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="email-interface">
+            <div class="left-pane">
+                <div class="pane-header">
+                    <h2 id="inbox-title">Inbox</h2>
+                    <div class="sort-controls">
+                        <label for="inbox-sort">Sort by:</label>
+                        <select id="inbox-sort" class="sort-select">
+                            <option value="date">Date (newest first)</option>
+                            <option value="date-asc">Date (oldest first)</option>
+                            <option value="subject">Subject (A-Z)</option>
+                            <option value="subject-desc">Subject (Z-A)</option>
+                            <option value="sender">Sender (A-Z)</option>
+                            <option value="sender-desc">Sender (Z-A)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="email-list" id="inbox-list">
+                    <div class="loading">Loading emails...</div>
+                </div>
+            </div>
+
+            <div class="right-pane">
+                <div class="pane-header">
+                    <h2 id="similar-title">Similar Emails</h2>
+                    <div class="sort-controls">
+                        <label for="similar-sort">Sort by:</label>
+                        <select id="similar-sort" class="sort-select">
+                            <option value="date">Date (newest first)</option>
+                            <option value="date-asc">Date (oldest first)</option>
+                            <option value="subject">Subject (A-Z)</option>
+                            <option value="subject-desc">Subject (Z-A)</option>
+                            <option value="sender">Sender (A-Z)</option>
+                            <option value="sender-desc">Sender (Z-A)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="email-list" id="similar-list">
+                    <div class="empty-state">
+                        <p>Click "Find Similar Emails" to find duplicate or similar messages</p>
+                        <p>Or select a specific email from the left and then click "Find Similar Emails"</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Archive Confirmation Modal -->
+    <div id="archive-modal" class="modal">
+        <div class="modal-content">
+            <h3>Confirm Archive</h3>
+            <p id="archive-message">Are you sure you want to archive <span id="archive-count">0</span> emails?</p>
+            {{if .DryRun}}
+            <p class="dry-run-notice">This is a dry run - no actual changes will be made.</p>
+            {{end}}
+            <div class="modal-actions">
+                <button id="confirm-archive-btn" class="btn btn-danger">Archive</button>
+                <button id="cancel-archive-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

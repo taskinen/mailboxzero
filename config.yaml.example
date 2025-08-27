@@ -1,0 +1,18 @@
+# Mailbox Zero Configuration Example
+# Copy this file to config.yaml and update with your settings
+
+server:
+  port: 8080
+  host: "localhost"
+
+jmap:
+  endpoint: "https://api.fastmail.com/jmap/session"
+  api_token: ""  # Set your Fastmail API token (generate at Settings → Privacy & Security → Integrations)
+
+# IMPORTANT SAFETY FEATURE
+# Set to false to enable actual archiving operations
+# Keep as true for testing to prevent any modifications to your mailbox
+dry_run: true
+
+# Default similarity threshold (0-100)
+default_similarity: 75
