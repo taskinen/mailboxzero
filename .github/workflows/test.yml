@@ -1,0 +1,69 @@
+name: Test Suite
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests with coverage
+      run: |
+        go test ./... -v -race -coverprofile=coverage.out -covermode=atomic -json > test-results.json || true
+
+    - name: Generate coverage report
+      run: |
+        echo "## Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        go tool cover -func=coverage.out | tail -n 1 | awk '{print "**Total Coverage: " $3 "**"}' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Coverage by Package" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Package | Coverage |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|----------|" >> $GITHUB_STEP_SUMMARY
+        go tool cover -func=coverage.out | grep -v "total:" | awk '{print "| " $1 " | " $3 " |"}' | sort -u >> $GITHUB_STEP_SUMMARY
+
+    - name: Test Report
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Go Test Results
+        path: test-results.json
+        reporter: 'go-test'
+        fail-on-error: true
+        fail-on-empty: true
+
+    - name: Upload coverage to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.out
+
+    - name: Check test results
+      run: |
+        if grep -q '"Action":"fail"' test-results.json; then
+          echo "Some tests failed"
+          exit 1
+        else
+          echo "All tests passed"
+        fi
