@@ -199,10 +199,10 @@ func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 				"id", "subject", "from", "to", "receivedAt", "preview", "hasAttachment", "mailboxIds", "keywords",
 				"bodyValues", "textBody", "htmlBody",
 			},
-			"bodyProperties": []string{"value", "isEncodingProblem", "isTruncated"},
+			"bodyProperties":      []string{"value", "isEncodingProblem", "isTruncated"},
 			"fetchTextBodyValues": true,
 			"fetchHTMLBodyValues": true,
-			"maxBodyValueBytes": 50000,
+			"maxBodyValueBytes":   50000,
 		}, "1"},
 	}
 

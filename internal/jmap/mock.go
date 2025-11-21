@@ -66,7 +66,7 @@ func (m *MockClient) GetInboxEmailsPaginated(limit, offset int) ([]Email, error)
 	if start >= len(inboxEmails) {
 		return []Email{}, nil
 	}
-	
+
 	end := start + limit
 	if end > len(inboxEmails) {
 		end = len(inboxEmails)
@@ -107,7 +107,7 @@ func (m *MockClient) ArchiveEmails(emailIDs []string, dryRun bool) error {
 		fmt.Printf("[MOCK DRY RUN] Would archive %d emails: %v\n", len(emailIDs), emailIDs)
 		return nil
 	}
-	
+
 	fmt.Printf("[MOCK MODE] Archiving %d emails: %v\n", len(emailIDs), emailIDs)
 	for _, id := range emailIDs {
 		m.archivedIDs[id] = true
@@ -158,26 +158,26 @@ func (m *MockClient) generateSampleEmails() {
 
 	// Create similar email groups
 	baseTime := time.Now().AddDate(0, 0, -30)
-	
+
 	for i := 0; i < len(senders); i++ {
 		sender := senders[i]
 		baseSubject := subjects[i]
 		baseContent := contents[i]
-		
+
 		// Create 3-5 similar emails for each sender
 		numSimilar := 3 + rand.Intn(3)
 		for j := 0; j < numSimilar; j++ {
 			email := Email{
-				ID:       fmt.Sprintf("email-%d-%d", i, j),
-				Subject:  baseSubject,
-				From:     []EmailAddress{{Email: sender, Name: extractNameFromEmail(sender)}},
-				Preview:  baseContent,
+				ID:         fmt.Sprintf("email-%d-%d", i, j),
+				Subject:    baseSubject,
+				From:       []EmailAddress{{Email: sender, Name: extractNameFromEmail(sender)}},
+				Preview:    baseContent,
 				ReceivedAt: baseTime.Add(time.Duration(i*24+j*6) * time.Hour),
 				BodyValues: map[string]BodyValue{
 					"text": {Value: baseContent + " This is additional content for the email body."},
 				},
 			}
-			
+
 			// Add slight variations to subjects for some emails
 			if j > 0 {
 				variations := []string{
@@ -188,55 +188,55 @@ func (m *MockClient) generateSampleEmails() {
 				}
 				email.Subject += variations[j%len(variations)]
 			}
-			
+
 			m.sampleEmails = append(m.sampleEmails, email)
 		}
 	}
-	
+
 	// Add some unique emails
 	uniqueEmails := []Email{
 		{
-			ID:       "unique-1",
-			Subject:  "Welcome to our platform!",
-			From:     []EmailAddress{{Email: "welcome@newservice.com", Name: "New Service"}},
-			Preview:  "Thanks for signing up! Here's how to get started.",
+			ID:         "unique-1",
+			Subject:    "Welcome to our platform!",
+			From:       []EmailAddress{{Email: "welcome@newservice.com", Name: "New Service"}},
+			Preview:    "Thanks for signing up! Here's how to get started.",
 			ReceivedAt: baseTime.Add(48 * time.Hour),
 			BodyValues: map[string]BodyValue{
 				"text": {Value: "Welcome! We're excited to have you on board."},
 			},
 		},
 		{
-			ID:       "unique-2",
-			Subject:  "Conference invitation",
-			From:     []EmailAddress{{Email: "events@techconf.com", Name: "Tech Conference"}},
-			Preview:  "You're invited to speak at our upcoming conference.",
+			ID:         "unique-2",
+			Subject:    "Conference invitation",
+			From:       []EmailAddress{{Email: "events@techconf.com", Name: "Tech Conference"}},
+			Preview:    "You're invited to speak at our upcoming conference.",
 			ReceivedAt: baseTime.Add(72 * time.Hour),
 			BodyValues: map[string]BodyValue{
 				"text": {Value: "We'd love to have you present at our conference."},
 			},
 		},
 	}
-	
+
 	m.sampleEmails = append(m.sampleEmails, uniqueEmails...)
 }
 
 // extractNameFromEmail creates a display name from an email address
 func extractNameFromEmail(email string) string {
 	names := map[string]string{
-		"notifications@github.com": "GitHub",
-		"support@stripe.com":       "Stripe Support",
-		"noreply@amazon.com":       "Amazon",
-		"alerts@uptime.com":        "Uptime Alerts",
+		"notifications@github.com":  "GitHub",
+		"support@stripe.com":        "Stripe Support",
+		"noreply@amazon.com":        "Amazon",
+		"alerts@uptime.com":         "Uptime Alerts",
 		"newsletter@techcrunch.com": "TechCrunch",
-		"billing@digitalocean.com": "DigitalOcean",
-		"security@google.com":      "Google Security",
-		"team@slack.com":           "Slack",
-		"updates@docker.com":       "Docker",
-		"info@mailchimp.com":       "Mailchimp",
-		"welcome@newservice.com":   "New Service",
-		"events@techconf.com":      "Tech Conference",
+		"billing@digitalocean.com":  "DigitalOcean",
+		"security@google.com":       "Google Security",
+		"team@slack.com":            "Slack",
+		"updates@docker.com":        "Docker",
+		"info@mailchimp.com":        "Mailchimp",
+		"welcome@newservice.com":    "New Service",
+		"events@techconf.com":       "Tech Conference",
 	}
-	
+
 	if name, ok := names[email]; ok {
 		return name
 	}

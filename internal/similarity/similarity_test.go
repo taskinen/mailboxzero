@@ -514,27 +514,27 @@ func TestGroupSimilarEmails(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
-		emails       []jmap.Email
-		threshold    float64
+		name          string
+		emails        []jmap.Email
+		threshold     float64
 		wantMinGroups int
 	}{
 		{
-			name:         "high threshold - find groups",
-			emails:       emails,
-			threshold:    0.8,
+			name:          "high threshold - find groups",
+			emails:        emails,
+			threshold:     0.8,
 			wantMinGroups: 2, // Should find 2 groups
 		},
 		{
-			name:         "very high threshold - fewer groups",
-			emails:       emails,
-			threshold:    0.99,
+			name:          "very high threshold - fewer groups",
+			emails:        emails,
+			threshold:     0.99,
 			wantMinGroups: 0,
 		},
 		{
-			name:         "empty emails",
-			emails:       []jmap.Email{},
-			threshold:    0.5,
+			name:          "empty emails",
+			emails:        []jmap.Email{},
+			threshold:     0.5,
 			wantMinGroups: 0,
 		},
 	}
@@ -606,9 +606,9 @@ func TestCalculateGroupSimilarity(t *testing.T) {
 func TestMinMax(t *testing.T) {
 	t.Run("min function", func(t *testing.T) {
 		tests := []struct {
-			name      string
-			a, b, c   int
-			want      int
+			name    string
+			a, b, c int
+			want    int
 		}{
 			{"a is minimum", 1, 2, 3, 1},
 			{"b is minimum", 2, 1, 3, 1},
@@ -628,9 +628,9 @@ func TestMinMax(t *testing.T) {
 
 	t.Run("max function", func(t *testing.T) {
 		tests := []struct {
-			name   string
-			a, b   int
-			want   int
+			name string
+			a, b int
+			want int
 		}{
 			{"a is maximum", 5, 3, 5},
 			{"b is maximum", 3, 5, 5},
@@ -661,18 +661,18 @@ func BenchmarkLevenshteinDistance(b *testing.B) {
 
 func BenchmarkCalculateEmailSimilarity(b *testing.B) {
 	email1 := jmap.Email{
-		ID:      "1",
-		Subject: "Weekly Newsletter Issue 123",
-		From:    []jmap.EmailAddress{{Email: "newsletter@example.com"}},
-		Preview: "This is a preview of the newsletter content",
+		ID:         "1",
+		Subject:    "Weekly Newsletter Issue 123",
+		From:       []jmap.EmailAddress{{Email: "newsletter@example.com"}},
+		Preview:    "This is a preview of the newsletter content",
 		ReceivedAt: time.Now(),
 	}
 
 	email2 := jmap.Email{
-		ID:      "2",
-		Subject: "Weekly Newsletter Issue 124",
-		From:    []jmap.EmailAddress{{Email: "newsletter@example.com"}},
-		Preview: "This is another preview of the newsletter content",
+		ID:         "2",
+		Subject:    "Weekly Newsletter Issue 124",
+		From:       []jmap.EmailAddress{{Email: "newsletter@example.com"}},
+		Preview:    "This is another preview of the newsletter content",
 		ReceivedAt: time.Now(),
 	}
 
@@ -683,11 +683,11 @@ func BenchmarkCalculateEmailSimilarity(b *testing.B) {
 
 func TestStringSimilarity_EdgeCases(t *testing.T) {
 	tests := []struct {
-		name       string
-		s1         string
-		s2         string
-		wantMin    float64
-		wantMax    float64
+		name    string
+		s1      string
+		s2      string
+		wantMin float64
+		wantMax float64
 	}{
 		{
 			name:    "very long similar strings",

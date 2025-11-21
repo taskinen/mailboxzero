@@ -10,6 +10,32 @@ permissions:
   pull-requests: write
 
 jobs:
+  format:
+    name: Check Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Check Go formatting
+      run: |
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "The following files are not formatted correctly:"
+          echo "$unformatted"
+          echo ""
+          echo "Please run 'gofmt -w .' to format your code"
+          exit 1
+        fi
+        echo "All Go files are properly formatted"
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest
