@@ -27,9 +27,13 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Install go-junit-report
+      run: go install github.com/jstemmer/go-junit-report/v2@latest
+
     - name: Run tests with coverage
       run: |
-        go test ./... -v -race -coverprofile=coverage.out -covermode=atomic -json > test-results.json || true
+        go test ./... -v -race -coverprofile=coverage.out -covermode=atomic 2>&1 | tee test-output.txt || true
+        cat test-output.txt | go-junit-report -set-exit-code > test-results.xml
 
     - name: Generate coverage report
       run: |
@@ -48,8 +52,8 @@ jobs:
       if: always()
       with:
         name: Go Test Results
-        path: test-results.json
-        reporter: 'go-test'
+        path: test-results.xml
+        reporter: 'java-junit'
         fail-on-error: true
         fail-on-empty: true
 
@@ -61,7 +65,7 @@ jobs:
 
     - name: Check test results
       run: |
-        if grep -q '"Action":"fail"' test-results.json; then
+        if grep -q 'failures="[1-9]' test-results.xml || grep -q 'errors="[1-9]' test-results.xml; then
           echo "Some tests failed"
           exit 1
         else
