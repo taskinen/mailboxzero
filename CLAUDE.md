@@ -249,11 +249,24 @@ mock_mode: true     # Enable mock mode
 # Quick start with mock data (no Fastmail account required)
 go run main.go -config config-mock.yaml.example
 
-# Run all tests (when implemented)
+# Run all tests
 go test ./...
+
+# Run tests with verbose output
+go test ./... -v
 
 # Run with race detection
 go test -race ./...
+
+# Run tests with coverage
+go test ./... -cover
+
+# Generate coverage report
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out
+
+# Run benchmarks
+go test ./... -bench=.
 
 # Lint the code (requires golangci-lint)
 golangci-lint run
@@ -363,7 +376,21 @@ log.SetFlags(log.LstdFlags | log.Lshortfile)
 3. **Interface Design:** Clean separation of concerns
 4. **Memory Management:** Efficient string operations and minimal allocations
 5. **Concurrency Safety:** Thread-safe operations where needed
-6. **Testing Ready:** Structured for unit test implementation
+6. **Comprehensive Testing:** Full unit test coverage with table-driven tests
+
+### Test Coverage
+The project includes comprehensive unit tests for all packages:
+- **Config Package:** Configuration loading, validation, and error handling
+- **JMAP Package:** Data parsing, mock client functionality, and helper functions
+- **Similarity Package:** Fuzzy matching algorithms, Levenshtein distance, email similarity
+- **Server Package:** HTTP handlers, API endpoints, and request/response handling
+
+Tests follow Go best practices:
+- Table-driven test design for multiple scenarios
+- Clear test naming and organization
+- Use of test helpers and fixtures
+- Mock clients for external dependencies
+- Benchmark tests for performance-critical functions
 
 ### Code Style
 - **Naming:** Clear, descriptive variable and function names

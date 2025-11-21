@@ -169,6 +169,25 @@ mailboxzero/
     └── static/           # CSS and JavaScript files
 ```
 
+### Running Tests
+
+The project includes comprehensive unit tests for all packages:
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with verbose output
+go test ./... -v
+
+# Run tests with coverage
+go test ./... -cover
+
+# Generate coverage report
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
 ## License
 
 This project is provided as-is for educational and personal use.
