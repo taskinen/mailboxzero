@@ -19,6 +19,21 @@ func TestLoad(t *testing.T) {
 server:
   port: 8080
   host: localhost
+protocol: jmap
+jmap:
+  endpoint: https://api.fastmail.com/jmap/session
+  api_token: test-token
+dry_run: true
+default_similarity: 75
+`,
+			wantErr: false,
+		},
+		{
+			name: "valid config without protocol (defaults to jmap)",
+			configYAML: `
+server:
+  port: 8080
+  host: localhost
 jmap:
   endpoint: https://api.fastmail.com/jmap/session
   api_token: test-token
@@ -33,6 +48,7 @@ default_similarity: 75
 server:
   port: 8080
   host: localhost
+protocol: jmap
 jmap:
   endpoint: ""
   api_token: ""
@@ -48,6 +64,7 @@ mock_mode: true
 server:
   port: 8080
   host: localhost
+protocol: jmap
 jmap:
   api_token: test-token
 dry_run: true
@@ -62,6 +79,7 @@ default_similarity: 75
 server:
   port: 8080
   host: localhost
+protocol: jmap
 jmap:
   endpoint: https://api.fastmail.com/jmap/session
 dry_run: true
@@ -76,6 +94,7 @@ default_similarity: 75
 server:
   port: -1
   host: localhost
+protocol: jmap
 jmap:
   endpoint: https://api.fastmail.com/jmap/session
   api_token: test-token
@@ -91,6 +110,7 @@ default_similarity: 75
 server:
   port: 99999
   host: localhost
+protocol: jmap
 jmap:
   endpoint: https://api.fastmail.com/jmap/session
   api_token: test-token
@@ -106,6 +126,7 @@ default_similarity: 75
 server:
   port: 8080
   host: localhost
+protocol: jmap
 jmap:
   endpoint: https://api.fastmail.com/jmap/session
   api_token: test-token
@@ -121,6 +142,7 @@ default_similarity: -10
 server:
   port: 8080
   host: localhost
+protocol: jmap
 jmap:
   endpoint: https://api.fastmail.com/jmap/session
   api_token: test-token
@@ -140,6 +162,22 @@ server:
 `,
 			wantErr:     true,
 			errContains: "failed to parse config file",
+		},
+		{
+			name: "invalid protocol",
+			configYAML: `
+server:
+  port: 8080
+  host: localhost
+protocol: pop3
+jmap:
+  endpoint: https://api.fastmail.com/jmap/session
+  api_token: test-token
+dry_run: true
+default_similarity: 75
+`,
+			wantErr:     true,
+			errContains: "invalid protocol",
 		},
 	}
 
@@ -195,17 +233,12 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				Server: struct {
-					Port int    `yaml:"port"`
-					Host string `yaml:"host"`
-				}{
+				Server: ServerConfig{
 					Port: 8080,
 					Host: "localhost",
 				},
-				JMAP: struct {
-					Endpoint string `yaml:"endpoint"`
-					APIToken string `yaml:"api_token"`
-				}{
+				Protocol: "jmap",
+				JMAP: JMAPConfig{
 					Endpoint: "https://api.fastmail.com/jmap/session",
 					APIToken: "test-token",
 				},
@@ -218,17 +251,12 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid config with mock mode",
 			config: Config{
-				Server: struct {
-					Port int    `yaml:"port"`
-					Host string `yaml:"host"`
-				}{
+				Server: ServerConfig{
 					Port: 8080,
 					Host: "localhost",
 				},
-				JMAP: struct {
-					Endpoint string `yaml:"endpoint"`
-					APIToken string `yaml:"api_token"`
-				}{
+				Protocol: "jmap",
+				JMAP: JMAPConfig{
 					Endpoint: "",
 					APIToken: "",
 				},
@@ -241,17 +269,12 @@ func TestValidate(t *testing.T) {
 		{
 			name: "missing jmap endpoint without mock mode",
 			config: Config{
-				Server: struct {
-					Port int    `yaml:"port"`
-					Host string `yaml:"host"`
-				}{
+				Server: ServerConfig{
 					Port: 8080,
 					Host: "localhost",
 				},
-				JMAP: struct {
-					Endpoint string `yaml:"endpoint"`
-					APIToken string `yaml:"api_token"`
-				}{
+				Protocol: "jmap",
+				JMAP: JMAPConfig{
 					Endpoint: "",
 					APIToken: "test-token",
 				},
@@ -261,6 +284,27 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "JMAP endpoint is required",
+		},
+		{
+			name: "valid IMAP config",
+			config: Config{
+				Server: ServerConfig{
+					Port: 8080,
+					Host: "localhost",
+				},
+				Protocol: "imap",
+				IMAP: IMAPConfig{
+					Host:     "imap.gmail.com",
+					Port:     993,
+					Username: "user@gmail.com",
+					Password: "password",
+					UseTLS:   true,
+				},
+				DryRun:            true,
+				DefaultSimilarity: 75,
+				MockMode:          false,
+			},
+			wantErr: false,
 		},
 	}
 
@@ -313,10 +357,7 @@ func TestGetServerAddr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				Server: struct {
-					Port int    `yaml:"port"`
-					Host string `yaml:"host"`
-				}{
+				Server: ServerConfig{
 					Port: tt.port,
 					Host: tt.host,
 				},

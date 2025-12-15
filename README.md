@@ -5,18 +5,20 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/taskinen/mailboxzero)](https://goreportcard.com/report/github.com/taskinen/mailboxzero)
 [![Made with Go](https://img.shields.io/badge/Made%20with-Go-1f425f.svg)](https://go.dev/)
 
-A Go-based web application that helps you clean up your Fastmail inbox by finding and archiving similar emails using JMAP protocol.
+A Go-based web application that helps you clean up your email inbox by finding and archiving similar emails. Supports **JMAP** (Fastmail) and **IMAP** (Gmail, Outlook, etc.) protocols.
 
 <img width="1457" height="1169" alt="SCR-20250827-psxl" src="https://github.com/user-attachments/assets/2f1fe630-5ba7-4c8a-a610-6f32388654b5" />
 
 ## Features
 
+- **Multiple Protocols**: JMAP (Fastmail) ✅ and IMAP (Gmail, Outlook, etc.) ✅
 - **Safe Operations**: Built-in dry run mode prevents accidental changes
 - **Dual-pane Interface**: View inbox on left, grouped similar emails on right
 - **Smart Similarity Matching**: Fuzzy matching based on subject, sender, and email content
 - **Adjustable Similarity Threshold**: Fine-tune matching with a percentage slider
 - **Selective Archiving**: Choose which emails to archive with confirmation dialog
 - **Individual Email Selection**: Select specific emails to find similar matches
+- **Mock Mode**: Test without any email account credentials
 
 ## Safety Features
 
@@ -30,8 +32,10 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 ### Prerequisites
 
 - Go 1.21 or later
-- Fastmail account with JMAP access
-- Fastmail API token (generated from account settings)
+- Email account with one of:
+  - **JMAP**: Fastmail account with API token ✅
+  - **IMAP**: Gmail, Outlook, or any IMAP provider ✅
+- Or use **Mock Mode** for testing (no account required)
 
 ### Installation
 
@@ -45,13 +49,43 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
    cp config.yaml.example config.yaml
    ```
 
-4. Edit `config.yaml` with your Fastmail API token:
+4. Edit `config.yaml` with your email provider credentials:
+
+   **For JMAP (Fastmail):**
    ```yaml
+   protocol: "jmap"
    jmap:
      endpoint: "https://api.fastmail.com/jmap/session"
      api_token: "your-api-token-here"
-   
-   # IMPORTANT: Set to false only when ready for real changes
+   dry_run: true
+   ```
+
+   **For IMAP (Gmail, Outlook, etc.):**
+   ```yaml
+   protocol: "imap"
+   imap:
+     host: "imap.gmail.com"
+     port: 993
+     username: "your-email@gmail.com"
+     password: "your-app-password"
+     use_tls: true
+     archive_folder: "[Gmail]/All Mail"
+   dry_run: true
+   ```
+
+   **For Mock Mode (no credentials needed):**
+   ```yaml
+   # JMAP Mock Mode
+   protocol: "jmap"
+   mock_mode: true
+   dry_run: true
+   ```
+
+   Or for IMAP mock mode:
+   ```yaml
+   # IMAP Mock Mode
+   protocol: "imap"
+   mock_mode: true
    dry_run: true
    ```
 
@@ -166,7 +200,10 @@ mailboxzero/
 ├── config.yaml            # Configuration file
 ├── internal/
 │   ├── config/            # Configuration handling
-│   ├── jmap/              # JMAP client implementation
+│   ├── protocol/          # Generic protocol abstraction layer
+│   ├── providers/         # Email protocol implementations
+│   │   ├── jmap/          # JMAP client (Fastmail)
+│   │   └── imap/          # IMAP client (Gmail, Outlook, etc.)
 │   ├── server/            # Web server and API handlers
 │   └── similarity/        # Email similarity algorithms
 └── web/

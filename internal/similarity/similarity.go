@@ -1,18 +1,18 @@
 package similarity
 
 import (
-	"mailboxzero/internal/jmap"
+	"mailboxzero/internal/protocol"
 	"sort"
 	"strings"
 	"unicode"
 )
 
 type EmailGroup struct {
-	Emails     []jmap.Email
+	Emails     []protocol.Email
 	Similarity float64
 }
 
-func FindSimilarEmails(emails []jmap.Email, threshold float64) []jmap.Email {
+func FindSimilarEmails(emails []protocol.Email, threshold float64) []protocol.Email {
 	if len(emails) == 0 {
 		return nil
 	}
@@ -30,8 +30,8 @@ func FindSimilarEmails(emails []jmap.Email, threshold float64) []jmap.Email {
 	return groups[0].Emails
 }
 
-func FindSimilarToEmail(targetEmail jmap.Email, emails []jmap.Email, threshold float64) []jmap.Email {
-	var similarEmails []jmap.Email
+func FindSimilarToEmail(targetEmail protocol.Email, emails []protocol.Email, threshold float64) []protocol.Email {
+	var similarEmails []protocol.Email
 
 	// Always include the target email itself as the first result
 	similarEmails = append(similarEmails, targetEmail)
@@ -50,7 +50,7 @@ func FindSimilarToEmail(targetEmail jmap.Email, emails []jmap.Email, threshold f
 	return similarEmails
 }
 
-func groupSimilarEmails(emails []jmap.Email, threshold float64) []EmailGroup {
+func groupSimilarEmails(emails []protocol.Email, threshold float64) []EmailGroup {
 	var groups []EmailGroup
 	processed := make(map[string]bool)
 
@@ -59,7 +59,7 @@ func groupSimilarEmails(emails []jmap.Email, threshold float64) []EmailGroup {
 			continue
 		}
 
-		var group []jmap.Email
+		var group []protocol.Email
 		group = append(group, email1)
 		processed[email1.ID] = true
 
@@ -88,7 +88,7 @@ func groupSimilarEmails(emails []jmap.Email, threshold float64) []EmailGroup {
 	return groups
 }
 
-func calculateEmailSimilarity(email1, email2 jmap.Email) float64 {
+func calculateEmailSimilarity(email1, email2 protocol.Email) float64 {
 	subjectSim := stringSimilarity(email1.Subject, email2.Subject)
 
 	var senderSim float64
@@ -108,7 +108,7 @@ func calculateEmailSimilarity(email1, email2 jmap.Email) float64 {
 	return weightedSimilarity
 }
 
-func calculateGroupSimilarity(emails []jmap.Email) float64 {
+func calculateGroupSimilarity(emails []protocol.Email) float64 {
 	if len(emails) <= 1 {
 		return 0.0
 	}
@@ -224,15 +224,14 @@ func levenshteinDistance(s1, s2 string) int {
 	return column[len(r1)]
 }
 
-func extractEmailBody(email jmap.Email) string {
+func extractEmailBody(email protocol.Email) string {
 	if email.Preview != "" {
 		return email.Preview
 	}
 
-	for _, bodyValue := range email.BodyValues {
-		if bodyValue.Value != "" {
-			return normalizeString(bodyValue.Value)
-		}
+	// Use simplified BodyText field (protocol.Email has BodyText instead of BodyValues map)
+	if email.BodyText != "" {
+		return normalizeString(email.BodyText)
 	}
 
 	return ""

@@ -5,9 +5,24 @@ server:
   port: 8080
   host: "localhost"
 
+# Protocol selection: "jmap" or "imap"
+# Defaults to "jmap" if not specified (backward compatible)
+protocol: "jmap"
+
+# JMAP Configuration (for Fastmail and other JMAP providers)
 jmap:
   endpoint: "https://api.fastmail.com/jmap/session"
   api_token: ""  # Set your Fastmail API token (generate at Settings → Privacy & Security → Integrations)
+
+# IMAP Configuration (for Gmail, Outlook, and other IMAP providers)
+# Only required if protocol is set to "imap"
+imap:
+  host: "imap.gmail.com"
+  port: 993
+  username: ""  # Your email address
+  password: ""  # Your password or app-specific password
+  use_tls: true
+  archive_folder: "Archive"  # Folder name for archived emails (Gmail uses "[Gmail]/All Mail")
 
 # IMPORTANT SAFETY FEATURE
 # Set to false to enable actual archiving operations
@@ -17,7 +32,7 @@ dry_run: true
 # Default similarity threshold (0-100)
 default_similarity: 75
 
-# MOCK MODE - Set to true to use sample data instead of real Fastmail account
-# When enabled, no real JMAP connection is made and sample emails are used
-# Perfect for testing and development
+# MOCK MODE - Set to true to use sample data instead of real email account
+# When enabled, no real connection is made and sample emails are used
+# Perfect for testing and development without credentials
 mock_mode: false

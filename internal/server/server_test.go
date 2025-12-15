@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"mailboxzero/internal/config"
-	"mailboxzero/internal/jmap"
+	"mailboxzero/internal/protocol"
+	"mailboxzero/internal/providers/jmap"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,13 +19,11 @@ func setupTestServer(t *testing.T) *Server {
 
 	// Create a minimal config
 	cfg := &config.Config{
-		Server: struct {
-			Port int    `yaml:"port"`
-			Host string `yaml:"host"`
-		}{
+		Server: config.ServerConfig{
 			Port: 8080,
 			Host: "localhost",
 		},
+		Protocol:          "jmap",
 		DryRun:            true,
 		DefaultSimilarity: 75,
 		MockMode:          true,
@@ -70,13 +69,11 @@ func setupTestServer(t *testing.T) *Server {
 
 func TestNew(t *testing.T) {
 	cfg := &config.Config{
-		Server: struct {
-			Port int    `yaml:"port"`
-			Host string `yaml:"host"`
-		}{
+		Server: config.ServerConfig{
 			Port: 8080,
 			Host: "localhost",
 		},
+		Protocol:          "jmap",
 		DryRun:            true,
 		DefaultSimilarity: 75,
 	}
@@ -105,8 +102,8 @@ func TestNew(t *testing.T) {
 		t.Error("New() did not set config correctly")
 	}
 
-	if server.jmapClient != mockClient {
-		t.Error("New() did not set jmapClient correctly")
+	if server.emailClient != mockClient {
+		t.Error("New() did not set emailClient correctly")
 	}
 
 	if server.templates == nil {
@@ -177,7 +174,7 @@ func TestHandleGetEmails(t *testing.T) {
 			}
 
 			if tt.wantStatusCode == http.StatusOK {
-				var response jmap.InboxInfo
+				var response protocol.InboxInfo
 				if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 					t.Errorf("handleGetEmails() failed to decode response: %v", err)
 				}
@@ -198,7 +195,7 @@ func TestHandleFindSimilar(t *testing.T) {
 	server := setupTestServer(t)
 
 	// Get some emails first to use their IDs
-	mockClient := server.jmapClient.(*jmap.MockClient)
+	mockClient := server.emailClient.(*jmap.MockClient)
 	emails, _ := mockClient.GetInboxEmails(10)
 
 	tests := []struct {
@@ -275,7 +272,7 @@ func TestHandleFindSimilar(t *testing.T) {
 			}
 
 			if tt.wantStatusCode == http.StatusOK {
-				var response []jmap.Email
+				var response []protocol.Email
 				if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 					t.Errorf("handleFindSimilar() failed to decode response: %v", err)
 				}
@@ -288,7 +285,7 @@ func TestHandleArchive(t *testing.T) {
 	server := setupTestServer(t)
 
 	// Get some emails first to use their IDs
-	mockClient := server.jmapClient.(*jmap.MockClient)
+	mockClient := server.emailClient.(*jmap.MockClient)
 	emails, _ := mockClient.GetInboxEmails(10)
 
 	tests := []struct {
@@ -417,8 +414,8 @@ func TestPageData(t *testing.T) {
 	data := PageData{
 		DryRun:            true,
 		DefaultSimilarity: 75,
-		Emails:            []jmap.Email{},
-		GroupedEmails:     []jmap.Email{},
+		Emails:            []protocol.Email{},
+		GroupedEmails:     []protocol.Email{},
 		SelectedEmailID:   "test-id",
 	}
 
@@ -672,7 +669,7 @@ func TestHandleGetEmails_JSONEncoding(t *testing.T) {
 	}
 
 	// Verify response is valid JSON
-	var response jmap.InboxInfo
+	var response protocol.InboxInfo
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Errorf("handleGetEmails() returned invalid JSON: %v", err)
 	}

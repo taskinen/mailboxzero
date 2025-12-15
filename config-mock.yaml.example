@@ -5,10 +5,23 @@ server:
   port: 8080
   host: "localhost"
 
-# JMAP settings are not required in mock mode
+# Protocol selection - "jmap" or "imap"
+# In mock mode, this determines which mock client is used
+# Currently only JMAP mock is fully implemented
+protocol: "jmap"
+
+# Credentials are not required in mock mode
 jmap:
   endpoint: ""
   api_token: ""
+
+imap:
+  host: ""
+  port: 993
+  username: ""
+  password: ""
+  use_tls: true
+  archive_folder: "Archive"
 
 # IMPORTANT: Keep dry_run true in mock mode for safety
 dry_run: true
@@ -16,7 +29,14 @@ dry_run: true
 # Default similarity threshold (0-100)
 default_similarity: 75
 
-# MOCK MODE - Set to true to use sample data instead of real Fastmail account
-# When enabled, no real JMAP connection is made and sample emails are used
-# Perfect for testing and development
+# MOCK MODE - Set to true to use sample data instead of real email account
+# When enabled, no real connection is made and realistic sample emails are used
+# Perfect for testing, development, and demonstrations without any credentials
 mock_mode: true
+
+# Notes:
+# - Mock mode provides 40+ realistic sample emails with similar groups
+# - Archive operations are simulated (emails are marked as archived in memory)
+# - No network connection is made in mock mode
+# - Great for testing the similarity matching algorithm
+# - IMAP mock mode is planned for future implementation

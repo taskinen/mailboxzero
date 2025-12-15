@@ -2,13 +2,14 @@ package jmap
 
 import (
 	"fmt"
+	"mailboxzero/internal/protocol"
 	"math/rand"
 	"time"
 )
 
-// MockClient implements the JMAP client interface but returns sample data
+// MockClient implements protocol.EmailClient but returns sample data
 type MockClient struct {
-	sampleEmails []Email
+	sampleEmails []protocol.Email
 	archivedIDs  map[string]bool
 }
 
@@ -21,50 +22,38 @@ func NewMockClient() *MockClient {
 	return mock
 }
 
-// Authenticate always succeeds for mock client
+// Authenticate implements protocol.EmailClient - always succeeds for mock client
 func (m *MockClient) Authenticate() error {
 	return nil
 }
 
-// GetPrimaryAccount returns a mock account ID
-func (m *MockClient) GetPrimaryAccount() string {
-	return "mock-account-123"
+// GetInboxEmails implements protocol.EmailClient - returns sample emails that haven't been archived
+func (m *MockClient) GetInboxEmails(limit int) ([]protocol.Email, error) {
+	info, err := m.GetInboxEmailsWithCountPaginated(limit, 0)
+	if err != nil {
+		return nil, err
+	}
+	return info.Emails, nil
 }
 
-// GetMailboxes returns mock mailboxes
-func (m *MockClient) GetMailboxes() ([]Mailbox, error) {
-	return []Mailbox{
-		{
-			ID:   "inbox-123",
-			Name: "Inbox",
-			Role: "inbox",
-		},
-		{
-			ID:   "archive-456",
-			Name: "Archive",
-			Role: "archive",
-		},
-	}, nil
-}
-
-// GetInboxEmails returns the sample emails that haven't been archived
-func (m *MockClient) GetInboxEmails(limit int) ([]Email, error) {
-	return m.GetInboxEmailsPaginated(limit, 0)
-}
-
-// GetInboxEmailsPaginated returns paginated sample emails that haven't been archived
-func (m *MockClient) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
-	var inboxEmails []Email
+// GetInboxEmailsWithCountPaginated implements protocol.EmailClient
+func (m *MockClient) GetInboxEmailsWithCountPaginated(limit, offset int) (*protocol.InboxInfo, error) {
+	var inboxEmails []protocol.Email
 	for _, email := range m.sampleEmails {
 		if !m.archivedIDs[email.ID] {
 			inboxEmails = append(inboxEmails, email)
 		}
 	}
 
+	totalCount := len(inboxEmails)
+
 	// Apply pagination
 	start := offset
 	if start >= len(inboxEmails) {
-		return []Email{}, nil
+		return &protocol.InboxInfo{
+			Emails:     []protocol.Email{},
+			TotalCount: totalCount,
+		}, nil
 	}
 
 	end := start + limit
@@ -72,46 +61,28 @@ func (m *MockClient) GetInboxEmailsPaginated(limit, offset int) ([]Email, error)
 		end = len(inboxEmails)
 	}
 
-	return inboxEmails[start:end], nil
-}
-
-// GetInboxEmailsWithCount returns sample emails with total count
-func (m *MockClient) GetInboxEmailsWithCount(limit int) (*InboxInfo, error) {
-	return m.GetInboxEmailsWithCountPaginated(limit, 0)
-}
-
-// GetInboxEmailsWithCountPaginated returns paginated sample emails with total count
-func (m *MockClient) GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo, error) {
-	// Count all non-archived emails
-	totalCount := 0
-	for _, email := range m.sampleEmails {
-		if !m.archivedIDs[email.ID] {
-			totalCount++
-		}
-	}
-
-	emails, err := m.GetInboxEmailsPaginated(limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	return &InboxInfo{
-		Emails:     emails,
+	return &protocol.InboxInfo{
+		Emails:     inboxEmails[start:end],
 		TotalCount: totalCount,
 	}, nil
 }
 
-// ArchiveEmails simulates archiving by marking emails as archived
+// ArchiveEmails implements protocol.EmailClient - simulates archiving by marking emails as archived
 func (m *MockClient) ArchiveEmails(emailIDs []string, dryRun bool) error {
 	if dryRun {
-		fmt.Printf("[MOCK DRY RUN] Would archive %d emails: %v\n", len(emailIDs), emailIDs)
+		fmt.Printf("[JMAP MOCK DRY RUN] Would archive %d emails: %v\n", len(emailIDs), emailIDs)
 		return nil
 	}
 
-	fmt.Printf("[MOCK MODE] Archiving %d emails: %v\n", len(emailIDs), emailIDs)
+	fmt.Printf("[JMAP MOCK MODE] Archiving %d emails: %v\n", len(emailIDs), emailIDs)
 	for _, id := range emailIDs {
 		m.archivedIDs[id] = true
 	}
+	return nil
+}
+
+// Close implements protocol.EmailClient - nothing to close for mock
+func (m *MockClient) Close() error {
 	return nil
 }
 
@@ -167,15 +138,13 @@ func (m *MockClient) generateSampleEmails() {
 		// Create 3-5 similar emails for each sender
 		numSimilar := 3 + rand.Intn(3)
 		for j := 0; j < numSimilar; j++ {
-			email := Email{
+			email := protocol.Email{
 				ID:         fmt.Sprintf("email-%d-%d", i, j),
 				Subject:    baseSubject,
-				From:       []EmailAddress{{Email: sender, Name: extractNameFromEmail(sender)}},
+				From:       []protocol.EmailAddress{{Email: sender, Name: extractNameFromEmail(sender)}},
 				Preview:    baseContent,
 				ReceivedAt: baseTime.Add(time.Duration(i*24+j*6) * time.Hour),
-				BodyValues: map[string]BodyValue{
-					"text": {Value: baseContent + " This is additional content for the email body."},
-				},
+				BodyText:   baseContent + " This is additional content for the email body.",
 			}
 
 			// Add slight variations to subjects for some emails
@@ -194,26 +163,22 @@ func (m *MockClient) generateSampleEmails() {
 	}
 
 	// Add some unique emails
-	uniqueEmails := []Email{
+	uniqueEmails := []protocol.Email{
 		{
 			ID:         "unique-1",
 			Subject:    "Welcome to our platform!",
-			From:       []EmailAddress{{Email: "welcome@newservice.com", Name: "New Service"}},
+			From:       []protocol.EmailAddress{{Email: "welcome@newservice.com", Name: "New Service"}},
 			Preview:    "Thanks for signing up! Here's how to get started.",
 			ReceivedAt: baseTime.Add(48 * time.Hour),
-			BodyValues: map[string]BodyValue{
-				"text": {Value: "Welcome! We're excited to have you on board."},
-			},
+			BodyText:   "Welcome! We're excited to have you on board.",
 		},
 		{
 			ID:         "unique-2",
 			Subject:    "Conference invitation",
-			From:       []EmailAddress{{Email: "events@techconf.com", Name: "Tech Conference"}},
+			From:       []protocol.EmailAddress{{Email: "events@techconf.com", Name: "Tech Conference"}},
 			Preview:    "You're invited to speak at our upcoming conference.",
 			ReceivedAt: baseTime.Add(72 * time.Hour),
-			BodyValues: map[string]BodyValue{
-				"text": {Value: "We'd love to have you present at our conference."},
-			},
+			BodyText:   "We'd love to have you present at our conference.",
 		},
 	}
 

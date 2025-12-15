@@ -1,7 +1,7 @@
 package similarity
 
 import (
-	"mailboxzero/internal/jmap"
+	"mailboxzero/internal/protocol"
 	"strings"
 	"testing"
 	"time"
@@ -220,28 +220,28 @@ func TestStringSimilarity(t *testing.T) {
 }
 
 func TestCalculateEmailSimilarity(t *testing.T) {
-	email1 := jmap.Email{
+	email1 := protocol.Email{
 		ID:      "1",
 		Subject: "Weekly Newsletter",
-		From: []jmap.EmailAddress{
+		From: []protocol.EmailAddress{
 			{Email: "newsletter@example.com"},
 		},
 		Preview: "This is a test newsletter",
 	}
 
-	email2 := jmap.Email{
+	email2 := protocol.Email{
 		ID:      "2",
 		Subject: "Weekly Newsletter",
-		From: []jmap.EmailAddress{
+		From: []protocol.EmailAddress{
 			{Email: "newsletter@example.com"},
 		},
 		Preview: "This is another test newsletter",
 	}
 
-	email3 := jmap.Email{
+	email3 := protocol.Email{
 		ID:      "3",
 		Subject: "Completely Different Subject",
-		From: []jmap.EmailAddress{
+		From: []protocol.EmailAddress{
 			{Email: "different@example.com"},
 		},
 		Preview: "Completely different content",
@@ -249,8 +249,8 @@ func TestCalculateEmailSimilarity(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		email1    jmap.Email
-		email2    jmap.Email
+		email1    protocol.Email
+		email2    protocol.Email
 		wantRange [2]float64 // min and max expected values
 	}{
 		{
@@ -287,39 +287,35 @@ func TestCalculateEmailSimilarity(t *testing.T) {
 func TestExtractEmailBody(t *testing.T) {
 	tests := []struct {
 		name  string
-		email jmap.Email
+		email protocol.Email
 		want  string
 	}{
 		{
 			name: "preview available",
-			email: jmap.Email{
+			email: protocol.Email{
 				Preview: "Test preview",
 			},
 			want: "Test preview",
 		},
 		{
-			name: "body values available",
-			email: jmap.Email{
-				Preview: "",
-				BodyValues: map[string]jmap.BodyValue{
-					"1": {Value: "Test body content"},
-				},
+			name: "body text available",
+			email: protocol.Email{
+				Preview:  "",
+				BodyText: "Test body content",
 			},
 			want: "test body content",
 		},
 		{
-			name: "both preview and body values",
-			email: jmap.Email{
-				Preview: "Test preview",
-				BodyValues: map[string]jmap.BodyValue{
-					"1": {Value: "Test body content"},
-				},
+			name: "both preview and body text",
+			email: protocol.Email{
+				Preview:  "Test preview",
+				BodyText: "Test body content",
 			},
 			want: "Test preview", // Preview takes precedence
 		},
 		{
 			name:  "no content",
-			email: jmap.Email{},
+			email: protocol.Email{},
 			want:  "",
 		},
 	}
@@ -335,36 +331,36 @@ func TestExtractEmailBody(t *testing.T) {
 }
 
 func TestFindSimilarEmails(t *testing.T) {
-	emails := []jmap.Email{
+	emails := []protocol.Email{
 		{
 			ID:      "1",
 			Subject: "Newsletter Issue 1",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Welcome to our newsletter",
 		},
 		{
 			ID:      "2",
 			Subject: "Newsletter Issue 2",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Welcome to our newsletter",
 		},
 		{
 			ID:      "3",
 			Subject: "Newsletter Issue 3",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Welcome to our newsletter",
 		},
 		{
 			ID:      "4",
 			Subject: "Completely Different",
-			From:    []jmap.EmailAddress{{Email: "other@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "other@example.com"}},
 			Preview: "Different content",
 		},
 	}
 
 	tests := []struct {
 		name      string
-		emails    []jmap.Email
+		emails    []protocol.Email
 		threshold float64
 		wantMin   int // Minimum expected similar emails
 	}{
@@ -382,13 +378,13 @@ func TestFindSimilarEmails(t *testing.T) {
 		},
 		{
 			name:      "empty input",
-			emails:    []jmap.Email{},
+			emails:    []protocol.Email{},
 			threshold: 0.5,
 			wantMin:   0,
 		},
 		{
 			name: "single email",
-			emails: []jmap.Email{
+			emails: []protocol.Email{
 				{ID: "1", Subject: "Test"},
 			},
 			threshold: 0.5,
@@ -408,39 +404,39 @@ func TestFindSimilarEmails(t *testing.T) {
 }
 
 func TestFindSimilarToEmail(t *testing.T) {
-	targetEmail := jmap.Email{
+	targetEmail := protocol.Email{
 		ID:      "target",
 		Subject: "Newsletter Issue 1",
-		From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+		From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 		Preview: "Welcome to our newsletter",
 	}
 
-	emails := []jmap.Email{
+	emails := []protocol.Email{
 		targetEmail,
 		{
 			ID:      "2",
 			Subject: "Newsletter Issue 2",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Welcome to our newsletter",
 		},
 		{
 			ID:      "3",
 			Subject: "Newsletter Issue 3",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Welcome to our newsletter",
 		},
 		{
 			ID:      "4",
 			Subject: "Completely Different",
-			From:    []jmap.EmailAddress{{Email: "other@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "other@example.com"}},
 			Preview: "Different content",
 		},
 	}
 
 	tests := []struct {
 		name        string
-		targetEmail jmap.Email
-		emails      []jmap.Email
+		targetEmail protocol.Email
+		emails      []protocol.Email
 		threshold   float64
 		wantMin     int // Minimum expected results (includes target)
 		wantMax     int // Maximum expected results
@@ -490,32 +486,32 @@ func TestFindSimilarToEmail(t *testing.T) {
 }
 
 func TestGroupSimilarEmails(t *testing.T) {
-	emails := []jmap.Email{
+	emails := []protocol.Email{
 		{
 			ID:      "1",
 			Subject: "Newsletter A",
-			From:    []jmap.EmailAddress{{Email: "a@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "a@example.com"}},
 		},
 		{
 			ID:      "2",
 			Subject: "Newsletter A",
-			From:    []jmap.EmailAddress{{Email: "a@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "a@example.com"}},
 		},
 		{
 			ID:      "3",
 			Subject: "Newsletter B",
-			From:    []jmap.EmailAddress{{Email: "b@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "b@example.com"}},
 		},
 		{
 			ID:      "4",
 			Subject: "Newsletter B",
-			From:    []jmap.EmailAddress{{Email: "b@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "b@example.com"}},
 		},
 	}
 
 	tests := []struct {
 		name          string
-		emails        []jmap.Email
+		emails        []protocol.Email
 		threshold     float64
 		wantMinGroups int
 	}{
@@ -533,7 +529,7 @@ func TestGroupSimilarEmails(t *testing.T) {
 		},
 		{
 			name:          "empty emails",
-			emails:        []jmap.Email{},
+			emails:        []protocol.Email{},
 			threshold:     0.5,
 			wantMinGroups: 0,
 		},
@@ -559,36 +555,36 @@ func TestGroupSimilarEmails(t *testing.T) {
 }
 
 func TestCalculateGroupSimilarity(t *testing.T) {
-	email1 := jmap.Email{
+	email1 := protocol.Email{
 		ID:      "1",
 		Subject: "Test",
-		From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+		From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 	}
 
-	email2 := jmap.Email{
+	email2 := protocol.Email{
 		ID:      "2",
 		Subject: "Test",
-		From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+		From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 	}
 
 	tests := []struct {
 		name   string
-		emails []jmap.Email
+		emails []protocol.Email
 		want   float64
 	}{
 		{
 			name:   "empty group",
-			emails: []jmap.Email{},
+			emails: []protocol.Email{},
 			want:   0.0,
 		},
 		{
 			name:   "single email",
-			emails: []jmap.Email{email1},
+			emails: []protocol.Email{email1},
 			want:   0.0,
 		},
 		{
 			name:   "two identical emails",
-			emails: []jmap.Email{email1, email2},
+			emails: []protocol.Email{email1, email2},
 			want:   0.8, // 0.4 (subject) + 0.4 (sender) + 0.0 (no body) = 0.8
 		},
 	}
@@ -660,18 +656,18 @@ func BenchmarkLevenshteinDistance(b *testing.B) {
 }
 
 func BenchmarkCalculateEmailSimilarity(b *testing.B) {
-	email1 := jmap.Email{
+	email1 := protocol.Email{
 		ID:         "1",
 		Subject:    "Weekly Newsletter Issue 123",
-		From:       []jmap.EmailAddress{{Email: "newsletter@example.com"}},
+		From:       []protocol.EmailAddress{{Email: "newsletter@example.com"}},
 		Preview:    "This is a preview of the newsletter content",
 		ReceivedAt: time.Now(),
 	}
 
-	email2 := jmap.Email{
+	email2 := protocol.Email{
 		ID:         "2",
 		Subject:    "Weekly Newsletter Issue 124",
-		From:       []jmap.EmailAddress{{Email: "newsletter@example.com"}},
+		From:       []protocol.EmailAddress{{Email: "newsletter@example.com"}},
 		Preview:    "This is another preview of the newsletter content",
 		ReceivedAt: time.Now(),
 	}
@@ -725,23 +721,23 @@ func TestStringSimilarity_EdgeCases(t *testing.T) {
 
 func TestFindSimilarEmails_EmptyResult(t *testing.T) {
 	// Test with emails that are all unique (no similar pairs)
-	emails := []jmap.Email{
+	emails := []protocol.Email{
 		{
 			ID:      "1",
 			Subject: "Unique Subject A",
-			From:    []jmap.EmailAddress{{Email: "a@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "a@example.com"}},
 			Preview: "Completely unique content A",
 		},
 		{
 			ID:      "2",
 			Subject: "Different Subject B",
-			From:    []jmap.EmailAddress{{Email: "b@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "b@example.com"}},
 			Preview: "Totally different content B",
 		},
 		{
 			ID:      "3",
 			Subject: "Another Topic C",
-			From:    []jmap.EmailAddress{{Email: "c@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "c@example.com"}},
 			Preview: "Distinct content C",
 		},
 	}
@@ -763,23 +759,23 @@ func TestFindSimilarEmails_NilInput(t *testing.T) {
 
 func TestGroupSimilarEmails_SingleGroup(t *testing.T) {
 	// All emails very similar
-	emails := []jmap.Email{
+	emails := []protocol.Email{
 		{
 			ID:      "1",
 			Subject: "Newsletter",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Content",
 		},
 		{
 			ID:      "2",
 			Subject: "Newsletter",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Content",
 		},
 		{
 			ID:      "3",
 			Subject: "Newsletter",
-			From:    []jmap.EmailAddress{{Email: "news@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "news@example.com"}},
 			Preview: "Content",
 		},
 	}
@@ -798,17 +794,17 @@ func TestGroupSimilarEmails_SingleGroup(t *testing.T) {
 }
 
 func TestCalculateEmailSimilarity_NoFrom(t *testing.T) {
-	email1 := jmap.Email{
+	email1 := protocol.Email{
 		ID:      "1",
 		Subject: "Test",
-		From:    []jmap.EmailAddress{}, // Empty From
+		From:    []protocol.EmailAddress{}, // Empty From
 		Preview: "Content",
 	}
 
-	email2 := jmap.Email{
+	email2 := protocol.Email{
 		ID:      "2",
 		Subject: "Test",
-		From:    []jmap.EmailAddress{}, // Empty From
+		From:    []protocol.EmailAddress{}, // Empty From
 		Preview: "Content",
 	}
 
@@ -821,17 +817,17 @@ func TestCalculateEmailSimilarity_NoFrom(t *testing.T) {
 }
 
 func TestCalculateEmailSimilarity_NoBody(t *testing.T) {
-	email1 := jmap.Email{
+	email1 := protocol.Email{
 		ID:      "1",
 		Subject: "Test Subject",
-		From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+		From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 		Preview: "", // No preview
 	}
 
-	email2 := jmap.Email{
+	email2 := protocol.Email{
 		ID:      "2",
 		Subject: "Test Subject",
-		From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+		From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 		Preview: "", // No preview
 	}
 
@@ -844,21 +840,21 @@ func TestCalculateEmailSimilarity_NoBody(t *testing.T) {
 }
 
 func TestCalculateGroupSimilarity_MultipleEmails(t *testing.T) {
-	emails := []jmap.Email{
+	emails := []protocol.Email{
 		{
 			ID:      "1",
 			Subject: "Test",
-			From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 		},
 		{
 			ID:      "2",
 			Subject: "Test",
-			From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 		},
 		{
 			ID:      "3",
 			Subject: "Test",
-			From:    []jmap.EmailAddress{{Email: "test@example.com"}},
+			From:    []protocol.EmailAddress{{Email: "test@example.com"}},
 		},
 	}
 

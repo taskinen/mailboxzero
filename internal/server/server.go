@@ -9,36 +9,37 @@ import (
 	"strconv"
 
 	"mailboxzero/internal/config"
-	"mailboxzero/internal/jmap"
+	"mailboxzero/internal/protocol"
 	"mailboxzero/internal/similarity"
 
 	"github.com/gorilla/mux"
 )
 
 type Server struct {
-	config     *config.Config
-	jmapClient jmap.JMAPClient
-	templates  *template.Template
+	config      *config.Config
+	emailClient protocol.EmailClient
+	templates   *template.Template
 }
 
 type PageData struct {
 	DryRun            bool
 	DefaultSimilarity int
-	Emails            []jmap.Email
-	GroupedEmails     []jmap.Email
+	Protocol          string
+	Emails            []protocol.Email
+	GroupedEmails     []protocol.Email
 	SelectedEmailID   string
 }
 
-func New(cfg *config.Config, jmapClient jmap.JMAPClient) (*Server, error) {
+func New(cfg *config.Config, emailClient protocol.EmailClient) (*Server, error) {
 	templates, err := template.ParseGlob("web/templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
 	return &Server{
-		config:     cfg,
-		jmapClient: jmapClient,
-		templates:  templates,
+		config:      cfg,
+		emailClient: emailClient,
+		templates:   templates,
 	}, nil
 }
 
@@ -55,6 +56,7 @@ func (s *Server) Start() error {
 
 	addr := s.config.GetServerAddr()
 	log.Printf("Server starting on http://%s", addr)
+	log.Printf("PROTOCOL: %s", s.config.Protocol)
 	log.Printf("DRY RUN MODE: %v", s.config.DryRun)
 
 	return http.ListenAndServe(addr, r)
@@ -64,6 +66,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		DryRun:            s.config.DryRun,
 		DefaultSimilarity: s.config.DefaultSimilarity,
+		Protocol:          s.config.Protocol,
 	}
 
 	if err := s.templates.ExecuteTemplate(w, "index.html", data); err != nil {
@@ -88,7 +91,7 @@ func (s *Server) handleGetEmails(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	inboxInfo, err := s.jmapClient.GetInboxEmailsWithCountPaginated(limit, offset)
+	inboxInfo, err := s.emailClient.GetInboxEmailsWithCountPaginated(limit, offset)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get emails: %v", err), http.StatusInternalServerError)
 		return
@@ -113,15 +116,15 @@ func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emails, err := s.jmapClient.GetInboxEmails(1000)
+	emails, err := s.emailClient.GetInboxEmails(1000)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get emails: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	var similarEmails []jmap.Email
+	var similarEmails []protocol.Email
 	if req.EmailID != "" {
-		var targetEmail *jmap.Email
+		var targetEmail *protocol.Email
 		for _, email := range emails {
 			if email.ID == req.EmailID {
 				targetEmail = &email
@@ -162,7 +165,7 @@ func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.jmapClient.ArchiveEmails(req.EmailIDs, s.config.DryRun); err != nil {
+	if err := s.emailClient.ArchiveEmails(req.EmailIDs, s.config.DryRun); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to archive emails: %v", err), http.StatusInternalServerError)
 		return
 	}

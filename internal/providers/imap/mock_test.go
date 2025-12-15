@@ -1,4 +1,4 @@
-package jmap
+package imap
 
 import (
 	"testing"
@@ -30,47 +30,6 @@ func TestMockClient_Authenticate(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("MockClient.Authenticate() unexpected error = %v", err)
-	}
-}
-
-func TestMockClient_GetPrimaryAccount(t *testing.T) {
-	client := NewMockClient()
-	accountID := client.GetPrimaryAccount()
-
-	if accountID == "" {
-		t.Error("MockClient.GetPrimaryAccount() returned empty string")
-	}
-}
-
-func TestMockClient_GetMailboxes(t *testing.T) {
-	client := NewMockClient()
-	mailboxes, err := client.GetMailboxes()
-
-	if err != nil {
-		t.Errorf("MockClient.GetMailboxes() unexpected error = %v", err)
-	}
-
-	if len(mailboxes) == 0 {
-		t.Error("MockClient.GetMailboxes() returned no mailboxes")
-	}
-
-	// Check for inbox
-	foundInbox := false
-	foundArchive := false
-	for _, mb := range mailboxes {
-		if mb.Role == "inbox" {
-			foundInbox = true
-		}
-		if mb.Role == "archive" {
-			foundArchive = true
-		}
-	}
-
-	if !foundInbox {
-		t.Error("MockClient.GetMailboxes() did not return inbox")
-	}
-	if !foundArchive {
-		t.Error("MockClient.GetMailboxes() did not return archive")
 	}
 }
 
@@ -146,54 +105,54 @@ func TestMockClient_GetInboxEmailsPaginated(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			emails, err := client.GetInboxEmailsPaginated(tt.limit, tt.offset)
+			info, err := client.GetInboxEmailsWithCountPaginated(tt.limit, tt.offset)
 
 			if tt.wantErr {
 				if err == nil {
-					t.Error("MockClient.GetInboxEmailsPaginated() expected error but got none")
+					t.Error("MockClient.GetInboxEmailsWithCountPaginated() expected error but got none")
 				}
 			} else {
 				if err != nil {
-					t.Errorf("MockClient.GetInboxEmailsPaginated() unexpected error = %v", err)
+					t.Errorf("MockClient.GetInboxEmailsWithCountPaginated() unexpected error = %v", err)
 				}
 
-				if len(emails) > tt.limit {
-					t.Errorf("MockClient.GetInboxEmailsPaginated() returned %d emails, want at most %d",
-						len(emails), tt.limit)
+				if len(info.Emails) > tt.limit {
+					t.Errorf("MockClient.GetInboxEmailsWithCountPaginated() returned %d emails, want at most %d",
+						len(info.Emails), tt.limit)
 				}
 			}
 		})
 	}
 }
 
-func TestMockClient_GetInboxEmailsWithCount(t *testing.T) {
+func TestMockClient_GetInboxEmailsWithCountPaginated_Limit(t *testing.T) {
 	client := NewMockClient()
 
-	info, err := client.GetInboxEmailsWithCount(10)
+	info, err := client.GetInboxEmailsWithCountPaginated(10, 0)
 	if err != nil {
-		t.Errorf("MockClient.GetInboxEmailsWithCount() unexpected error = %v", err)
+		t.Errorf("MockClient.GetInboxEmailsWithCountPaginated() unexpected error = %v", err)
 	}
 
 	if info == nil {
-		t.Fatal("MockClient.GetInboxEmailsWithCount() returned nil")
+		t.Fatal("MockClient.GetInboxEmailsWithCountPaginated() returned nil")
 	}
 
 	if len(info.Emails) > 10 {
-		t.Errorf("MockClient.GetInboxEmailsWithCount() returned %d emails, want at most 10",
+		t.Errorf("MockClient.GetInboxEmailsWithCountPaginated() returned %d emails, want at most 10",
 			len(info.Emails))
 	}
 
 	if info.TotalCount <= 0 {
-		t.Error("MockClient.GetInboxEmailsWithCount() TotalCount should be positive")
+		t.Error("MockClient.GetInboxEmailsWithCountPaginated() TotalCount should be positive")
 	}
 
 	if info.TotalCount < len(info.Emails) {
-		t.Errorf("MockClient.GetInboxEmailsWithCount() TotalCount = %d, but returned %d emails",
+		t.Errorf("MockClient.GetInboxEmailsWithCountPaginated() TotalCount = %d, but returned %d emails",
 			info.TotalCount, len(info.Emails))
 	}
 }
 
-func TestMockClient_GetInboxEmailsWithCountPaginated(t *testing.T) {
+func TestMockClient_GetInboxEmailsWithCountPaginated_Pagination(t *testing.T) {
 	client := NewMockClient()
 
 	// Get first page
@@ -231,13 +190,13 @@ func TestMockClient_ArchiveEmails(t *testing.T) {
 	}{
 		{
 			name:     "dry run archive",
-			emailIDs: []string{"email-0-0", "email-0-1"},
+			emailIDs: []string{"imap-1000", "imap-1001"},
 			dryRun:   true,
 			wantErr:  false,
 		},
 		{
 			name:     "real archive",
-			emailIDs: []string{"email-1-0", "email-1-1"},
+			emailIDs: []string{"imap-2000", "imap-2001"},
 			dryRun:   false,
 			wantErr:  false,
 		},
@@ -346,7 +305,7 @@ func TestMockClient_GenerateSampleEmails(t *testing.T) {
 	client := NewMockClient()
 
 	if len(client.sampleEmails) == 0 {
-		t.Fatal("generateSampleEmails() should create emails")
+		t.Fatal("generateSampleIMAPEmails() should create emails")
 	}
 
 	// Check that emails have required fields
@@ -384,6 +343,15 @@ func TestMockClient_GenerateSampleEmails(t *testing.T) {
 	}
 
 	if !foundGroup {
-		t.Error("generateSampleEmails() should create groups of similar emails from same senders")
+		t.Error("generateSampleIMAPEmails() should create groups of similar emails from same senders")
+	}
+}
+
+func TestMockClient_Close(t *testing.T) {
+	client := NewMockClient()
+	err := client.Close()
+
+	if err != nil {
+		t.Errorf("MockClient.Close() unexpected error = %v", err)
 	}
 }
