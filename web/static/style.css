@@ -373,6 +373,41 @@ header h1 {
     background-color: #c0392b;
 }
 
+.archive-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background-color: #eafaf1;
+    border: 1px solid #b7e4c7;
+    border-radius: 5px;
+}
+
+.archive-status-text {
+    color: #1e7e34;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.archive-status-text.glow {
+    color: #155724;
+    animation: undoGlow 1.5s ease-in-out infinite;
+}
+
+.archive-status-undo {
+    padding: 5px 12px;
+    font-size: 0.85em;
+}
+
+@keyframes undoGlow {
+    0%, 100% {
+        text-shadow: 0 0 4px rgba(40, 167, 69, 0.5);
+    }
+    50% {
+        text-shadow: 0 0 12px rgba(40, 167, 69, 1), 0 0 18px rgba(40, 167, 69, 0.7);
+    }
+}
+
 .preview-toggle-label {
     display: flex;
     align-items: center;

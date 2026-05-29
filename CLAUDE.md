@@ -2,7 +2,7 @@
 
 ## Project Status: ✅ COMPLETED
 
-**Last Updated:** May 29, 2026
+**Last Updated:** May 30, 2026
 **Version:** 1.0
 **Status:** Production Ready (with dry run safety)
 
@@ -24,28 +24,38 @@ Mailbox Zero is a Go-based web application that helps users clean up their Fastm
 ```
 mailboxzero/
 ├── main.go                     # Application entry point
-├── go.mod                      # Go module dependencies
+├── go.mod / go.sum             # Go module dependencies (gorilla/mux, yaml.v3)
 ├── config.yaml.example         # Configuration template
+├── config-mock.yaml.example    # Mock-mode configuration template
 ├── .gitignore                  # Git ignore rules
+├── LICENSE                     # MIT license
 ├── README.md                   # User documentation
 ├── CLAUDE.md                   # Development documentation (this file)
+├── .github/
+│   └── workflows/
+│       └── test.yml            # CI: gofmt check and `go test -race -coverprofile`
 ├── internal/
 │   ├── config/
-│   │   └── config.go          # Configuration loading and validation
+│   │   ├── config.go           # Configuration loading and validation
+│   │   └── config_test.go
 │   ├── jmap/
-│   │   ├── client.go          # JMAP client implementation and JMAPClient interface
-│   │   ├── email.go           # Email data structures and operations
-│   │   └── mock.go            # MockClient with built-in sample data for mock mode
+│   │   ├── client.go           # JMAPClient interface + real Client transport
+│   │   ├── email.go            # Email/Mailbox types + Archive/Unarchive operations
+│   │   ├── mock.go             # MockClient with built-in sample data for mock mode
+│   │   ├── jmap_test.go
+│   │   └── mock_test.go
 │   ├── server/
-│   │   └── server.go          # HTTP server and API handlers
+│   │   ├── server.go           # HTTP server and API handlers
+│   │   └── server_test.go
 │   └── similarity/
-│       └── similarity.go      # Fuzzy matching algorithms
+│       ├── similarity.go       # Fuzzy matching algorithms
+│       └── similarity_test.go
 └── web/
     ├── templates/
-    │   └── index.html         # Main application template
+    │   └── index.html          # Main application template
     └── static/
-        ├── style.css          # Application styles
-        └── app.js             # Frontend JavaScript
+        ├── style.css           # Application styles
+        └── app.js              # Frontend JavaScript
 ```
 
 ### Core Components
@@ -91,6 +101,7 @@ mailboxzero/
   - `GET /api/emails` - Fetch inbox emails
   - `POST /api/similar` - Find similar emails with threshold
   - `POST /api/archive` - Archive selected emails
+  - `POST /api/unarchive` - Move previously archived emails back to the inbox (powers the Undo button)
   - `POST /api/clear` - Clear results
 - **Features:**
   - Template rendering with data injection
@@ -117,6 +128,7 @@ mailboxzero/
 3. **Confirmation Dialogs:** Required before the standard "Archive Selected" write operation (the opt-in "Archive & Find Next" button intentionally skips it for rapid sweeping)
 4. **Visual Warnings:** Clear UI indicators when in dry run mode
 5. **API Token Authentication:** Secure authentication using Fastmail API tokens
+6. **Undo Archive:** After every successful archive, a status pill with an "Undo" button appears in the top-right of the action bar. Undo POSTs the last-archived IDs to `/api/unarchive`, which moves them back to the inbox. Undo does not refresh the similar-emails pane — the restored emails reappear on the next Refresh or Find Similar. After Undo, the status text changes to "Unarchived N e-mail(s)" with a glow animation (`undoGlow` in `style.css`).
 
 ### ✅ Core Functionality
 1. **Dual-Pane Interface:** Inbox (left) and similar emails (right)
@@ -185,6 +197,16 @@ default_similarity: 75          # Default similarity percentage (0-100)
   }
   ```
 - **Response:** Success confirmation with dry run status
+
+### POST /api/unarchive
+- **Purpose:** Move previously archived emails back to the inbox (Undo)
+- **Request Body:**
+  ```json
+  {
+    "emailIds": ["id1", "id2", "id3"]
+  }
+  ```
+- **Response:** Success confirmation with dry run status (same shape as `/api/archive`)
 
 ### POST /api/clear
 - **Purpose:** Clear similarity results
@@ -332,10 +354,9 @@ CMD ["./mailboxzero"]
 3. **Advanced Filters:** Date ranges, sender whitelist, size limits
 4. **Batch Operations:** Process large inboxes in chunks
 5. **Email Preview:** Full email content preview before archiving
-6. **Undo Functionality:** Restore recently archived emails
-7. **Statistics Dashboard:** Email cleanup metrics and reports
-8. **API Rate Limiting:** Respect JMAP API rate limits
-9. **OAuth2 Support:** Modern authentication flow
+6. **Statistics Dashboard:** Email cleanup metrics and reports
+7. **API Rate Limiting:** Respect JMAP API rate limits
+8. **OAuth2 Support:** Modern authentication flow
 
 ## Troubleshooting Guide
 

@@ -368,6 +368,129 @@ func TestHandleArchive(t *testing.T) {
 	}
 }
 
+func TestHandleUnarchive(t *testing.T) {
+	server := setupTestServer(t)
+
+	mockClient := server.jmapClient.(*jmap.MockClient)
+	emails, _ := mockClient.GetInboxEmails(10)
+
+	tests := []struct {
+		name           string
+		requestBody    interface{}
+		wantStatusCode int
+	}{
+		{
+			name: "unarchive single email",
+			requestBody: ArchiveRequest{
+				EmailIDs: []string{emails[0].ID},
+			},
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name: "unarchive multiple emails",
+			requestBody: ArchiveRequest{
+				EmailIDs: []string{emails[1].ID, emails[2].ID},
+			},
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name: "unarchive empty list",
+			requestBody: ArchiveRequest{
+				EmailIDs: []string{},
+			},
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:           "invalid request body",
+			requestBody:    "invalid json",
+			wantStatusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body []byte
+			var err error
+
+			if str, ok := tt.requestBody.(string); ok {
+				body = []byte(str)
+			} else {
+				body, err = json.Marshal(tt.requestBody)
+				if err != nil {
+					t.Fatalf("Failed to marshal request: %v", err)
+				}
+			}
+
+			req := httptest.NewRequest("POST", "/api/unarchive", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			server.handleUnarchive(w, req)
+
+			if w.Code != tt.wantStatusCode {
+				t.Errorf("handleUnarchive() status = %v, want %v", w.Code, tt.wantStatusCode)
+			}
+
+			if tt.wantStatusCode == http.StatusOK {
+				var response map[string]interface{}
+				if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+					t.Errorf("handleUnarchive() failed to decode response: %v", err)
+				}
+
+				if success, ok := response["success"].(bool); !ok || !success {
+					t.Error("handleUnarchive() response should have success=true")
+				}
+
+				if dryRun, ok := response["dryRun"].(bool); !ok {
+					t.Error("handleUnarchive() response should have dryRun field")
+				} else if dryRun != server.config.DryRun {
+					t.Errorf("handleUnarchive() dryRun = %v, want %v", dryRun, server.config.DryRun)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleUnarchive_ErrorConditions(t *testing.T) {
+	server := setupTestServer(t)
+
+	tests := []struct {
+		name           string
+		requestBody    string
+		wantStatusCode int
+	}{
+		{
+			name:           "malformed JSON",
+			requestBody:    "{invalid json",
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:           "null emailIds",
+			requestBody:    `{"emailIds": null}`,
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:           "missing emailIds field",
+			requestBody:    `{}`,
+			wantStatusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/unarchive", strings.NewReader(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			server.handleUnarchive(w, req)
+
+			if w.Code != tt.wantStatusCode {
+				t.Errorf("handleUnarchive() status = %v, want %v", w.Code, tt.wantStatusCode)
+			}
+		})
+	}
+}
+
 func TestHandleClear(t *testing.T) {
 	server := setupTestServer(t)
 

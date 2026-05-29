@@ -342,6 +342,57 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 	return nil
 }
 
+func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
+	if dryRun {
+		fmt.Printf("[DRY RUN] Would unarchive %d emails: %v\n", len(emailIDs), emailIDs)
+		return nil
+	}
+
+	accountID := c.GetPrimaryAccount()
+	if accountID == "" {
+		return fmt.Errorf("no primary account found")
+	}
+
+	mailboxes, err := c.GetMailboxes()
+	if err != nil {
+		return fmt.Errorf("failed to get mailboxes: %w", err)
+	}
+
+	var inboxID string
+	for _, mb := range mailboxes {
+		if mb.Role == "inbox" {
+			inboxID = mb.ID
+		}
+	}
+
+	if inboxID == "" {
+		return fmt.Errorf("inbox not found")
+	}
+
+	updates := make(map[string]interface{})
+	for _, emailID := range emailIDs {
+		updates[emailID] = map[string]interface{}{
+			"mailboxIds": map[string]bool{
+				inboxID: true,
+			},
+		}
+	}
+
+	methodCalls := []MethodCall{
+		{"Email/set", map[string]interface{}{
+			"accountId": accountID,
+			"update":    updates,
+		}, "0"},
+	}
+
+	_, err = c.makeRequest(methodCalls)
+	if err != nil {
+		return fmt.Errorf("failed to unarchive emails: %w", err)
+	}
+
+	return nil
+}
+
 func parseEmail(data map[string]interface{}) Email {
 	email := Email{
 		ID:      getString(data, "id"),

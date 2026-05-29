@@ -4,6 +4,7 @@ class MailboxZero {
         this.similarEmails = [];
         this.selectedEmailId = null;
         this.selectedSimilarEmails = new Set();
+        this.lastArchivedIds = [];
         this.inboxSortBy = 'date'; // Default sort by date (newest first)
         this.similarSortBy = 'date'; // Default sort by date (newest first)
         this.totalInboxCount = 0; // Track total count from server
@@ -28,6 +29,9 @@ class MailboxZero {
         this.selectAllCheckbox = document.getElementById('select-all-checkbox');
         this.archiveBtn = document.getElementById('archive-btn');
         this.archiveFindNextBtn = document.getElementById('archive-find-next-btn');
+        this.archiveStatus = document.getElementById('archive-status');
+        this.archiveStatusText = document.getElementById('archive-status-text');
+        this.archiveUndoBtn = document.getElementById('archive-undo-btn');
         this.inboxList = document.getElementById('inbox-list');
         this.similarList = document.getElementById('similar-list');
         
@@ -106,6 +110,7 @@ class MailboxZero {
         
         this.archiveBtn.addEventListener('click', () => this.showArchiveModal());
         this.archiveFindNextBtn.addEventListener('click', () => this.archiveAndFindNext());
+        this.archiveUndoBtn.addEventListener('click', () => this.undoArchive());
         this.confirmArchiveBtn.addEventListener('click', () => this.archiveEmails());
         this.cancelArchiveBtn.addEventListener('click', () => this.hideArchiveModal());
         this.modalOverlay.addEventListener('click', () => this.hideArchiveModal());
@@ -246,7 +251,7 @@ class MailboxZero {
     async archiveEmails() {
         try {
             const emailIds = Array.from(this.selectedSimilarEmails);
-            
+
             const response = await fetch('/api/archive', {
                 method: 'POST',
                 headers: {
@@ -254,21 +259,17 @@ class MailboxZero {
                 },
                 body: JSON.stringify({ emailIds })
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
-            const result = await response.json();
+
+            await response.json();
             this.hideArchiveModal();
-            
-            if (result.dryRun) {
-                alert(`Dry run completed: Would have archived ${emailIds.length} emails.`);
-            } else {
-                alert(`Successfully archived ${emailIds.length} emails.`);
-                this.loadEmails(); // Refresh inbox
-                this.clearResults(); // Clear similar emails
-            }
+            this.lastArchivedIds = emailIds;
+            this.showArchiveStatus(emailIds.length);
+            this.loadEmails(); // Refresh inbox
+            this.clearResults(); // Clear similar emails
         } catch (error) {
             console.error('Error archiving emails:', error);
             alert('Failed to archive emails.');
@@ -293,11 +294,47 @@ class MailboxZero {
             }
 
             await response.json();
+            this.lastArchivedIds = emailIds;
+            this.showArchiveStatus(emailIds.length);
             await this.loadEmails();
             await this.findSimilarEmails();
         } catch (error) {
             console.error('Error in archive & find next:', error);
             alert('Failed to archive emails.');
+        }
+    }
+
+    showArchiveStatus(count) {
+        this.archiveStatusText.textContent = `Successfully archived ${count} e-mail(s)`;
+        this.archiveStatusText.classList.remove('glow');
+        this.archiveUndoBtn.style.display = '';
+        this.archiveStatus.style.display = '';
+    }
+
+    async undoArchive() {
+        if (this.lastArchivedIds.length === 0) return;
+        const emailIds = this.lastArchivedIds.slice();
+        try {
+            const response = await fetch('/api/unarchive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ emailIds })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            await response.json();
+            this.archiveStatusText.textContent = `Unarchived ${emailIds.length} e-mail(s)`;
+            this.archiveStatusText.classList.add('glow');
+            this.archiveUndoBtn.style.display = 'none';
+            this.lastArchivedIds = [];
+        } catch (error) {
+            console.error('Error undoing archive:', error);
+            alert('Failed to undo archive.');
         }
     }
 

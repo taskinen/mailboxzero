@@ -51,6 +51,7 @@ func (s *Server) Start() error {
 	r.HandleFunc("/api/emails", s.handleGetEmails).Methods("GET")
 	r.HandleFunc("/api/similar", s.handleFindSimilar).Methods("POST")
 	r.HandleFunc("/api/archive", s.handleArchive).Methods("POST")
+	r.HandleFunc("/api/unarchive", s.handleUnarchive).Methods("POST")
 	r.HandleFunc("/api/clear", s.handleClear).Methods("POST")
 
 	addr := s.config.GetServerAddr()
@@ -170,6 +171,33 @@ func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Successfully archived %d emails", len(req.EmailIDs)),
+		"dryRun":  s.config.DryRun,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleUnarchive(w http.ResponseWriter, r *http.Request) {
+	var req ArchiveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.EmailIDs) == 0 {
+		http.Error(w, "No emails to unarchive", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.jmapClient.UnarchiveEmails(req.EmailIDs, s.config.DryRun); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to unarchive emails: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Successfully unarchived %d emails", len(req.EmailIDs)),
 		"dryRun":  s.config.DryRun,
 	}
 

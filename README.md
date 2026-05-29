@@ -17,6 +17,7 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 - **Adjustable Similarity Threshold**: Fine-tune matching with a percentage slider
 - **Selective Archiving**: Choose which emails to archive with confirmation dialog
 - **Rapid Archive Loop**: "Archive & Find Next" button archives the current selection without confirmation and immediately re-runs the similarity search
+- **Undo Archive**: After each successful archive a status pill with an "Undo" button appears in the top-right of the action bar to restore the just-archived messages
 - **Individual Email Selection**: Select specific emails to find similar matches
 - **Mock Mode**: Run against built-in sample data — no Fastmail credentials required
 
@@ -25,6 +26,7 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 - **DRY RUN MODE**: All write operations are disabled by default
 - **Archive Only**: The only write operation is moving emails to archive (never deletes)
 - **Confirmation Dialog**: Required before archiving via "Archive Selected" (the opt-in "Archive & Find Next" button intentionally skips it)
+- **Undo Archive**: An "Undo" button appears after each successful archive and moves the affected messages back to the inbox via `POST /api/unarchive`
 - **Visual Warnings**: Clear indication when in dry run mode
 
 ## Setup

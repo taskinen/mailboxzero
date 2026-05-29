@@ -115,6 +115,20 @@ func (m *MockClient) ArchiveEmails(emailIDs []string, dryRun bool) error {
 	return nil
 }
 
+// UnarchiveEmails simulates unarchiving by clearing the archived flag
+func (m *MockClient) UnarchiveEmails(emailIDs []string, dryRun bool) error {
+	if dryRun {
+		fmt.Printf("[MOCK DRY RUN] Would unarchive %d emails: %v\n", len(emailIDs), emailIDs)
+		return nil
+	}
+
+	fmt.Printf("[MOCK MODE] Unarchiving %d emails: %v\n", len(emailIDs), emailIDs)
+	for _, id := range emailIDs {
+		delete(m.archivedIDs, id)
+	}
+	return nil
+}
+
 // generateSampleEmails creates realistic sample email data
 func (m *MockClient) generateSampleEmails() {
 	senders := []string{

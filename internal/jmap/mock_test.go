@@ -299,6 +299,106 @@ func TestMockClient_ArchiveEmails(t *testing.T) {
 	}
 }
 
+func TestMockClient_UnarchiveEmails(t *testing.T) {
+	tests := []struct {
+		name     string
+		emailIDs []string
+		dryRun   bool
+	}{
+		{
+			name:     "dry run unarchive",
+			emailIDs: []string{"email-0-0", "email-0-1"},
+			dryRun:   true,
+		},
+		{
+			name:     "real unarchive",
+			emailIDs: []string{"email-1-0", "email-1-1"},
+			dryRun:   false,
+		},
+		{
+			name:     "unarchive empty list",
+			emailIDs: []string{},
+			dryRun:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewMockClient()
+
+			// Pre-archive the target emails so we have something to undo
+			if err := client.ArchiveEmails(tt.emailIDs, false); err != nil {
+				t.Fatalf("setup ArchiveEmails error = %v", err)
+			}
+
+			err := client.UnarchiveEmails(tt.emailIDs, tt.dryRun)
+			if err != nil {
+				t.Errorf("MockClient.UnarchiveEmails() unexpected error = %v", err)
+			}
+
+			if tt.dryRun {
+				// In dry run mode the archived flag must remain set
+				for _, id := range tt.emailIDs {
+					if !client.archivedIDs[id] {
+						t.Errorf("MockClient.UnarchiveEmails() dry run cleared archived flag for %s", id)
+					}
+				}
+			} else {
+				// In real mode the archived flag must be cleared
+				for _, id := range tt.emailIDs {
+					if client.archivedIDs[id] {
+						t.Errorf("MockClient.UnarchiveEmails() email %s should be unarchived", id)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMockClient_UnarchiveRestoresInbox(t *testing.T) {
+	client := NewMockClient()
+
+	initialEmails, err := client.GetInboxEmails(100)
+	if err != nil {
+		t.Fatalf("Failed to get initial emails: %v", err)
+	}
+	if len(initialEmails) < 2 {
+		t.Fatal("Need at least 2 sample emails for this test")
+	}
+
+	emailsToArchive := []string{initialEmails[0].ID, initialEmails[1].ID}
+	if err := client.ArchiveEmails(emailsToArchive, false); err != nil {
+		t.Fatalf("Failed to archive emails: %v", err)
+	}
+
+	if err := client.UnarchiveEmails(emailsToArchive, false); err != nil {
+		t.Fatalf("Failed to unarchive emails: %v", err)
+	}
+
+	afterEmails, err := client.GetInboxEmails(100)
+	if err != nil {
+		t.Fatalf("Failed to get emails after unarchiving: %v", err)
+	}
+
+	if len(afterEmails) != len(initialEmails) {
+		t.Errorf("After archive+unarchive inbox has %d emails, want %d",
+			len(afterEmails), len(initialEmails))
+	}
+
+	for _, id := range emailsToArchive {
+		found := false
+		for _, email := range afterEmails {
+			if email.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Unarchived email %s should be back in inbox", id)
+		}
+	}
+}
+
 func TestMockClient_ArchiveAndRetrieve(t *testing.T) {
 	client := NewMockClient()
 
