@@ -16,13 +16,15 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 - **Smart Similarity Matching**: Fuzzy matching based on subject, sender, and email content
 - **Adjustable Similarity Threshold**: Fine-tune matching with a percentage slider
 - **Selective Archiving**: Choose which emails to archive with confirmation dialog
+- **Rapid Archive Loop**: "Archive & Find Next" button archives the current selection without confirmation and immediately re-runs the similarity search
 - **Individual Email Selection**: Select specific emails to find similar matches
+- **Mock Mode**: Run against built-in sample data — no Fastmail credentials required
 
 ## Safety Features
 
 - **DRY RUN MODE**: All write operations are disabled by default
 - **Archive Only**: The only write operation is moving emails to archive (never deletes)
-- **Confirmation Dialog**: Requires confirmation before archiving
+- **Confirmation Dialog**: Required before archiving via "Archive Selected" (the opt-in "Archive & Find Next" button intentionally skips it)
 - **Visual Warnings**: Clear indication when in dry run mode
 
 ## Setup
@@ -74,6 +76,17 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 
 3. The application will display a warning banner when in dry run mode
 
+### Mock Mode (no Fastmail account required)
+
+For development, testing, or demos you can run against built-in sample data instead of a real Fastmail inbox:
+
+```bash
+cp config-mock.yaml.example config.yaml
+go run main.go
+```
+
+Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JMAP endpoint and API token are not required. Keep `dry_run: true` here too — archive operations simulate against the in-memory sample emails.
+
 ## Usage
 
 ### Basic Workflow
@@ -85,7 +98,7 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 3. **Adjust Similarity**: Use the percentage slider to fine-tune matching sensitivity
 4. **Review Matches**: Similar emails appear in the right pane with checkboxes
 5. **Select for Archiving**: Choose which emails to archive (all selected by default)
-6. **Archive**: Click "Archive Selected" and confirm to move emails to archive folder
+6. **Archive**: Click "Archive Selected" and confirm to move emails to archive folder, or click "Archive & Find Next" to archive immediately without confirmation and automatically search for the next batch of similar emails
 
 ### Key Features
 
@@ -120,6 +133,7 @@ jmap:
 
 dry_run: true             # Safety feature - set to false to enable changes
 default_similarity: 75    # Default similarity percentage (0-100)
+mock_mode: false          # Set to true to use built-in sample data (no JMAP needed)
 ```
 
 ## How Similarity Matching Works

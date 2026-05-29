@@ -27,6 +27,7 @@ class MailboxZero {
         this.clearResultsBtn = document.getElementById('clear-results-btn');
         this.selectAllCheckbox = document.getElementById('select-all-checkbox');
         this.archiveBtn = document.getElementById('archive-btn');
+        this.archiveFindNextBtn = document.getElementById('archive-find-next-btn');
         this.inboxList = document.getElementById('inbox-list');
         this.similarList = document.getElementById('similar-list');
         
@@ -104,6 +105,7 @@ class MailboxZero {
         });
         
         this.archiveBtn.addEventListener('click', () => this.showArchiveModal());
+        this.archiveFindNextBtn.addEventListener('click', () => this.archiveAndFindNext());
         this.confirmArchiveBtn.addEventListener('click', () => this.archiveEmails());
         this.cancelArchiveBtn.addEventListener('click', () => this.hideArchiveModal());
         this.modalOverlay.addEventListener('click', () => this.hideArchiveModal());
@@ -271,6 +273,31 @@ class MailboxZero {
             console.error('Error archiving emails:', error);
             alert('Failed to archive emails.');
             this.hideArchiveModal();
+        }
+    }
+
+    async archiveAndFindNext() {
+        if (this.selectedSimilarEmails.size === 0) return;
+        const emailIds = Array.from(this.selectedSimilarEmails);
+        try {
+            const response = await fetch('/api/archive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ emailIds })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            await response.json();
+            await this.loadEmails();
+            await this.findSimilarEmails();
+        } catch (error) {
+            console.error('Error in archive & find next:', error);
+            alert('Failed to archive emails.');
         }
     }
 
@@ -518,6 +545,7 @@ class MailboxZero {
         
         this.clearResultsBtn.disabled = !hasResults;
         this.archiveBtn.disabled = !hasSelected;
+        this.archiveFindNextBtn.disabled = !hasSelected;
         
         this.updateTitles();
     }
