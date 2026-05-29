@@ -33,8 +33,9 @@ mailboxzero/
 │   ├── config/
 │   │   └── config.go          # Configuration loading and validation
 │   ├── jmap/
-│   │   ├── client.go          # JMAP client implementation
-│   │   └── email.go           # Email data structures and operations
+│   │   ├── client.go          # JMAP client implementation and JMAPClient interface
+│   │   ├── email.go           # Email data structures and operations
+│   │   └── mock.go            # MockClient with built-in sample data for mock mode
 │   ├── server/
 │   │   └── server.go          # HTTP server and API handlers
 │   └── similarity/
@@ -59,12 +60,13 @@ mailboxzero/
   - Default similarity threshold
 
 #### 2. JMAP Client (`internal/jmap/`)
-- **Files:** `client.go`, `email.go`
+- **Files:** `client.go`, `email.go`, `mock.go`
 - **Purpose:** Handles communication with Fastmail's JMAP API
 - **Features:**
+  - `JMAPClient` interface implemented by both the real `Client` and the in-memory `MockClient` (selected via `mock_mode` in config)
   - Session authentication with Bearer tokens
   - Mailbox discovery (inbox, archive)
-  - Email querying and retrieval with body content
+  - Email querying and retrieval with body content, including a paginated `GetInboxEmailsWithCountPaginated` used by the `/api/emails` endpoint
   - Safe archive operations (move to archive folder)
   - Comprehensive error handling
 
@@ -158,10 +160,10 @@ default_similarity: 75          # Default similarity percentage (0-100)
 ## API Endpoints
 
 ### GET /api/emails
-- **Purpose:** Retrieve inbox emails
-- **Response:** JSON array of email objects
-- **Limit:** 100 emails for performance
-- **Fields:** ID, subject, from, preview, receivedAt, bodyValues
+- **Purpose:** Retrieve inbox emails (paginated)
+- **Query Parameters:** `limit` (default 100) and `offset` (default 0)
+- **Response:** JSON object `{ "emails": [...], "totalCount": N }` (`InboxInfo`)
+- **Email Fields:** ID, subject, from, preview, receivedAt, bodyValues
 
 ### POST /api/similar
 - **Purpose:** Find similar emails
