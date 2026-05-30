@@ -2,7 +2,7 @@
 
 ## Project Status: ✅ COMPLETED
 
-**Last Updated:** May 30, 2026
+**Last Updated:** May 30, 2026 (similarity algorithm rewrite)
 **Version:** 1.0
 **Status:** Production Ready (with dry run safety)
 
@@ -82,17 +82,17 @@ mailboxzero/
 
 #### 3. Similarity Engine (`internal/similarity/`)
 - **File:** `similarity.go`
-- **Purpose:** Advanced fuzzy matching for email similarity
+- **Purpose:** Fuzzy matching tuned for newsletter/notification clustering
 - **Algorithm:**
-  - **Subject Similarity (40% weight):** Levenshtein distance over pre-normalized strings
-  - **Sender Similarity (40% weight):** Levenshtein distance over pre-normalized sender email address
-  - **Content Similarity (20% weight):** Jaccard similarity over normalized word tokens (length ≥ 3) extracted from the preview/body
+  - **Sender Similarity (50% weight):** Structured ladder, not Levenshtein. Same full address → 1.0; same domain → 0.8 (suppressed for shared-ESP domains like `sendgrid.net` unless local parts also match); same registrable root domain (e.g. `mail.google.com` ↔ `accounts.google.com`) → 0.7; same non-generic display name → 0.6.
+  - **Subject Similarity (30% weight):** `max(tokenJaccard, levenshtein)` over a normalized subject that has reply/forward prefixes (`Re:`, `Fwd:`, `[list]`) stripped. Token Jaccard filters a small stop-word set (`weekly`, `newsletter`, `update`, etc.) and requires both sides to have ≥2 surviving tokens before being credited; otherwise the score falls back to Levenshtein alone.
+  - **Body Similarity (20% weight):** Jaccard similarity over normalized word tokens (length ≥ 3) extracted from preview/body.
 - **Features:**
-  - Per-email features (`subjectNorm`, `senderNorm`, `bodyTokens`) precomputed once per call so the inner pairwise compare avoids re-normalizing or re-tokenizing the same strings
-  - Threshold-aware short-circuit: each weighted stage bails out as soon as the partial score plus the maximum remaining contribution falls below `threshold`
-  - String normalization (lowercase, punctuation removal)
-  - Common word detection for similarity boosting
-  - Configurable threshold matching
+  - Per-email features (`senderAddr`, `senderDomain`, `senderRoot`, `senderName`, `subjectNorm`, `subjectTokens`, `bodyTokens`) precomputed once per call so the inner pairwise compare avoids re-parsing senders or re-tokenizing strings
+  - Threshold-aware short-circuit: cheap-first ordering (sender → subject → body) bails out as soon as the partial score plus the maximum remaining contribution falls below `threshold`
+  - Single-link cluster expansion in `groupSimilarFeatures`: a candidate joins a cluster if it matches ANY existing member, not just the seed — important when the seed is an atypical member of an obvious group
+  - String normalization (lowercase, punctuation-to-space, collapsed whitespace)
+  - Public-suffix awareness for a small set of multi-label suffixes (`co.uk`, `github.io`, etc.)
   - Group-based and individual email matching
 
 #### 4. Web Server (`internal/server/`)
@@ -163,7 +163,7 @@ jmap:
   api_token: ""                 # Fastmail API token (required)
 
 dry_run: true                   # Safety feature - MUST be false for real operations
-default_similarity: 75          # Default similarity percentage (0-100)
+default_similarity: 60          # Default similarity percentage (0-100)
 ```
 
 ### Security Considerations
@@ -185,7 +185,7 @@ default_similarity: 75          # Default similarity percentage (0-100)
 - **Request Body:**
   ```json
   {
-    "similarityThreshold": 75.0,
+    "similarityThreshold": 60.0,
     "emailId": "optional-specific-email-id"
   }
   ```
@@ -268,7 +268,7 @@ jmap:
   api_token: ""     # Not required in mock mode
 
 dry_run: true       # Keep enabled for safety
-default_similarity: 75
+default_similarity: 60
 mock_mode: true     # Enable mock mode
 ```
 

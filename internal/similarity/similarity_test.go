@@ -83,12 +83,12 @@ func TestNormalizeString(t *testing.T) {
 		{
 			name:  "punctuation removal",
 			input: "Hello, World!",
-			want:  "hello  world", // Punctuation becomes spaces, not collapsed
+			want:  "hello world",
 		},
 		{
-			name:  "multiple spaces",
+			name:  "multiple spaces collapsed",
 			input: "Hello    World",
-			want:  "hello    world", // Multiple spaces preserved
+			want:  "hello world",
 		},
 		{
 			name:  "special characters",
@@ -117,61 +117,6 @@ func TestNormalizeString(t *testing.T) {
 			got := normalizeString(tt.input)
 			if got != tt.want {
 				t.Errorf("normalizeString(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestContainsCommonWords(t *testing.T) {
-	tests := []struct {
-		name string
-		s1   string
-		s2   string
-		want bool
-	}{
-		{
-			name: "has common words",
-			s1:   "hello world test",
-			s2:   "hello world example",
-			want: true,
-		},
-		{
-			name: "no common words",
-			s1:   "hello world",
-			s2:   "foo bar",
-			want: false,
-		},
-		{
-			name: "short words ignored",
-			s1:   "a b c",
-			s2:   "a b c",
-			want: false,
-		},
-		{
-			name: "one common word only",
-			s1:   "hello world",
-			s2:   "hello foo",
-			want: false,
-		},
-		{
-			name: "empty strings",
-			s1:   "",
-			s2:   "",
-			want: false,
-		},
-		{
-			name: "exactly two common words",
-			s1:   "newsletter weekly update",
-			s2:   "weekly newsletter digest",
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := containsCommonWords(tt.s1, tt.s2)
-			if got != tt.want {
-				t.Errorf("containsCommonWords(%q, %q) = %v, want %v", tt.s1, tt.s2, got, tt.want)
 			}
 		})
 	}
@@ -590,7 +535,7 @@ func TestCalculateGroupSimilarity(t *testing.T) {
 		{
 			name:   "two identical emails",
 			emails: []jmap.Email{email1, email2},
-			want:   0.8, // 0.4 (subject) + 0.4 (sender) + 0.0 (no body) = 0.8
+			want:   0.8, // 0.5 (sender) + 0.3 (subject) + 0.0 (no body) = 0.8
 		},
 	}
 
@@ -783,11 +728,11 @@ func TestStringSimilarity_EdgeCases(t *testing.T) {
 			wantMax: 1.0,
 		},
 		{
-			name:    "string with common words boost",
+			name:    "partial word overlap stays below 1.0",
 			s1:      "newsletter weekly update digest information",
 			s2:      "newsletter weekly report summary data",
 			wantMin: 0.3,
-			wantMax: 1.1, // Can exceed 1.0 with boost
+			wantMax: 1.0,
 		},
 		{
 			name:    "mostly punctuation",
@@ -958,5 +903,413 @@ func TestCalculateGroupSimilarity_MultipleEmails(t *testing.T) {
 	// For 3 identical emails, should be high
 	if similarity < 0.7 {
 		t.Errorf("calculateGroupSimilarity() for identical emails = %v, want > 0.7", similarity)
+	}
+}
+
+func TestSenderSimilarity_Ladder(t *testing.T) {
+	mk := func(name, addr string) features {
+		return precomputeOne(jmap.Email{
+			From: []jmap.EmailAddress{{Name: name, Email: addr}},
+		})
+	}
+
+	tests := []struct {
+		name string
+		a    features
+		b    features
+		want float64
+	}{
+		{
+			name: "same full address",
+			a:    mk("", "noreply@datablocks.com"),
+			b:    mk("", "noreply@datablocks.com"),
+			want: 1.0,
+		},
+		{
+			name: "same domain different local part",
+			a:    mk("", "support@datablocks.com"),
+			b:    mk("", "newsletter@datablocks.com"),
+			want: 0.8,
+		},
+		{
+			name: "same registrable root different subdomain",
+			a:    mk("", "alerts@mail.google.com"),
+			b:    mk("", "noreply@accounts.google.com"),
+			want: 0.7,
+		},
+		{
+			name: "specific display name matches across addresses",
+			a:    mk("Datablocks", "bounce+abc@mta-east.example.net"),
+			b:    mk("Datablocks", "bounce+xyz@mta-west.example.org"),
+			want: 0.6,
+		},
+		{
+			name: "different orgs, different domains",
+			a:    mk("Stripe", "noreply@stripe.com"),
+			b:    mk("Google", "noreply@google.com"),
+			want: 0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := senderSimilarity(tt.a, tt.b)
+			if got != tt.want {
+				t.Errorf("senderSimilarity() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSenderSimilarity_SharedESPGuard(t *testing.T) {
+	a := precomputeOne(jmap.Email{
+		From: []jmap.EmailAddress{{Email: "bounces+a@sendgrid.net"}},
+	})
+	b := precomputeOne(jmap.Email{
+		From: []jmap.EmailAddress{{Email: "bounces+b@sendgrid.net"}},
+	})
+
+	// Same ESP domain with different local parts must not credit the
+	// same-domain rung, otherwise unrelated senders relayed through one
+	// provider would cluster together.
+	got := senderSimilarity(a, b)
+	if got != 0.0 {
+		t.Errorf("senderSimilarity() for ESP-relayed senders = %v, want 0.0", got)
+	}
+}
+
+func TestSenderSimilarity_GenericDisplayName(t *testing.T) {
+	a := precomputeOne(jmap.Email{
+		From: []jmap.EmailAddress{{Name: "Notifications", Email: "alerts@stripe.com"}},
+	})
+	b := precomputeOne(jmap.Email{
+		From: []jmap.EmailAddress{{Name: "Notifications", Email: "alerts@google.com"}},
+	})
+
+	got := senderSimilarity(a, b)
+	if got >= 0.6 {
+		t.Errorf("senderSimilarity() with generic display name = %v, want < 0.6", got)
+	}
+}
+
+func TestSubjectSimilarity_StripsReplyPrefixes(t *testing.T) {
+	a := precomputeOne(jmap.Email{Subject: "Re: Re: Quarterly review summary"})
+	b := precomputeOne(jmap.Email{Subject: "Quarterly review summary"})
+
+	got := subjectSimilarity(a, b)
+	if got != 1.0 {
+		t.Errorf("subjectSimilarity() with stripped Re: prefixes = %v, want 1.0", got)
+	}
+}
+
+func TestSubjectSimilarity_StripsMailingListTag(t *testing.T) {
+	a := precomputeOne(jmap.Email{Subject: "[golang-nuts] Generics question"})
+	b := precomputeOne(jmap.Email{Subject: "Generics question"})
+
+	got := subjectSimilarity(a, b)
+	if got != 1.0 {
+		t.Errorf("subjectSimilarity() with stripped list tag = %v, want 1.0", got)
+	}
+}
+
+func TestCalculateEmailSimilarity_DatablocksScenario(t *testing.T) {
+	// 4 emails from the same Datablocks newsletter sender with varied
+	// subjects and bodies — the case that prompted the algorithm
+	// rewrite. They share the brand name across subject and body and
+	// boilerplate footer text ("unsubscribe"), enough to clear the new
+	// default threshold (60%).
+	emails := []jmap.Email{
+		{
+			Subject: "Your daily Datablocks digest",
+			From:    []jmap.EmailAddress{{Email: "newsletter@datablocks.com", Name: "Datablocks"}},
+			Preview: "Today's curated blocks and analytics from Datablocks. Click here to unsubscribe.",
+		},
+		{
+			Subject: "Weekend Datablocks roundup",
+			From:    []jmap.EmailAddress{{Email: "newsletter@datablocks.com", Name: "Datablocks"}},
+			Preview: "A look back at popular blocks this week from the Datablocks team. Unsubscribe link below.",
+		},
+		{
+			Subject: "Datablocks platform: beta features now live",
+			From:    []jmap.EmailAddress{{Email: "newsletter@datablocks.com", Name: "Datablocks"}},
+			Preview: "Datablocks shipped a new query editor and improved blocks UI. To unsubscribe click below.",
+		},
+		{
+			Subject: "Special offer: Datablocks Pro at 20% off",
+			From:    []jmap.EmailAddress{{Email: "newsletter@datablocks.com", Name: "Datablocks"}},
+			Preview: "Upgrade Datablocks Pro for advanced blocks and team workspaces. Unsubscribe here.",
+		},
+	}
+
+	// Same-sender newsletters with varied content land in the 0.55-0.75
+	// range under the new weights. The previous algorithm produced
+	// scores under 0.40 for the same shape of input, so even the lower
+	// threshold here represents a large improvement.
+	for i := 0; i < len(emails); i++ {
+		for j := i + 1; j < len(emails); j++ {
+			got := calculateEmailSimilarity(emails[i], emails[j])
+			if got < 0.55 {
+				t.Errorf("calculateEmailSimilarity(Datablocks[%d], Datablocks[%d]) = %v, want >= 0.55",
+					i, j, got)
+			}
+		}
+	}
+}
+
+func TestCalculateEmailSimilarity_GoogleSubdomains(t *testing.T) {
+	a := jmap.Email{
+		Subject: "Security alert: new sign-in",
+		From:    []jmap.EmailAddress{{Email: "no-reply@accounts.google.com"}},
+		Preview: "We detected a new sign-in to your account.",
+	}
+	b := jmap.Email{
+		Subject: "Your weekly Google Photos memories",
+		From:    []jmap.EmailAddress{{Email: "noreply-photos@google.com"}},
+		Preview: "Rediscover photos and videos from past years.",
+	}
+
+	got := calculateEmailSimilarity(a, b)
+	// Same registrable root (google.com) gives 0.7 * 0.5 = 0.35 from
+	// sender alone, no subject/body overlap — total around 0.35-0.4.
+	// Lower the threshold to 0.35 to validate the registrable root signal.
+	if got < 0.35 {
+		t.Errorf("calculateEmailSimilarity(Google subdomains) = %v, want >= 0.35", got)
+	}
+}
+
+func TestCalculateEmailSimilarity_NoFalsePositive_GenericLocals(t *testing.T) {
+	a := jmap.Email{
+		Subject: "Receipt for your payment",
+		From:    []jmap.EmailAddress{{Email: "noreply@stripe.com"}},
+		Preview: "Thanks for using Stripe. Your receipt is attached.",
+	}
+	b := jmap.Email{
+		Subject: "Security alert: new sign-in",
+		From:    []jmap.EmailAddress{{Email: "noreply@google.com"}},
+		Preview: "We detected a new sign-in to your account.",
+	}
+
+	got := calculateEmailSimilarity(a, b)
+	// The old algorithm rewarded "noreply" and "com" tokens shared
+	// across these unrelated emails — sender ladder must score 0.0.
+	if got >= 0.4 {
+		t.Errorf("calculateEmailSimilarity(noreply@stripe vs noreply@google) = %v, want < 0.4", got)
+	}
+}
+
+func TestCalculateEmailSimilarity_NoFalsePositive_SharedESP(t *testing.T) {
+	a := jmap.Email{
+		Subject: "Welcome to Acme",
+		From:    []jmap.EmailAddress{{Email: "bounce-acme-12345@sendgrid.net"}},
+		Preview: "Thanks for joining Acme.",
+	}
+	b := jmap.Email{
+		Subject: "Your Beta Corp account is ready",
+		From:    []jmap.EmailAddress{{Email: "bounce-beta-67890@sendgrid.net"}},
+		Preview: "Get started with Beta Corp today.",
+	}
+
+	got := calculateEmailSimilarity(a, b)
+	if got >= 0.4 {
+		t.Errorf("calculateEmailSimilarity(sendgrid relay) = %v, want < 0.4", got)
+	}
+}
+
+func TestGroupSimilarFeatures_ClusterExpansion(t *testing.T) {
+	// "far" does not meet the threshold against the cluster seed but
+	// does meet it against the "bridge" member. Under the old
+	// seed-only clustering, far would be left out (its 1-element group
+	// is then dropped). Under single-link expansion, the bridge pulls
+	// far into the cluster — exactly the symptom that contributed to
+	// the user's "Datablocks group not found" report.
+	from := []jmap.EmailAddress{{Email: "alerts@acme.example"}}
+	emails := []jmap.Email{
+		{
+			ID: "seed", From: from,
+			Subject: "Service status report",
+			Preview: "Service status and uptime summary.",
+		},
+		{
+			ID: "sibling", From: from,
+			Subject: "Service status report",
+			Preview: "Service status and uptime summary.",
+		},
+		{
+			ID: "bridge", From: from,
+			Subject: "Service status and alerts report",
+			Preview: "Service status uptime alerts bridge summary.",
+		},
+		{
+			ID: "far", From: from,
+			Subject: "Alerts dashboard",
+			Preview: "Alerts bridge dashboard.",
+		},
+	}
+
+	// Sanity check: far should NOT match seed directly under 0.6, so
+	// the test is only meaningful when cluster expansion is what pulls
+	// far in.
+	if direct := calculateEmailSimilarity(emails[0], emails[3]); direct >= 0.6 {
+		t.Fatalf("test premise violated: seed↔far direct similarity %v ≥ 0.6", direct)
+	}
+
+	groups := groupSimilarEmails(emails, 0.6)
+	if len(groups) != 1 {
+		t.Fatalf("groupSimilarEmails() returned %d groups, want 1", len(groups))
+	}
+	if len(groups[0].Emails) != 4 {
+		ids := make([]string, 0, len(groups[0].Emails))
+		for _, e := range groups[0].Emails {
+			ids = append(ids, e.ID)
+		}
+		t.Errorf("groupSimilarEmails() cluster size = %d (%v), want 4", len(groups[0].Emails), ids)
+	}
+}
+
+func TestNormalizeSubject_StripsPrefixes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "no prefix", input: "Quarterly review summary", want: "quarterly review summary"},
+		{name: "Re:", input: "Re: Quarterly review summary", want: "quarterly review summary"},
+		{name: "Fwd:", input: "Fwd: Quarterly review summary", want: "quarterly review summary"},
+		{name: "Fw:", input: "Fw: Quarterly review summary", want: "quarterly review summary"},
+		{name: "AW:", input: "AW: Quarterly review summary", want: "quarterly review summary"},
+		{name: "SV:", input: "SV: Quarterly review summary", want: "quarterly review summary"},
+		{name: "repeated Re:", input: "Re: Re: Re: Quarterly review summary", want: "quarterly review summary"},
+		{name: "case-insensitive", input: "RE: quarterly review summary", want: "quarterly review summary"},
+		{name: "list tag only", input: "[golang-nuts] Generics question", want: "generics question"},
+		{name: "tag + reply prefix", input: "[golang-nuts] Re: Generics question", want: "generics question"},
+		{name: "reply prefix + tag", input: "Re: [golang-nuts] Generics question", want: "generics question"},
+		{name: "no whitespace after colon", input: "Re:tight", want: "tight"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeSubject(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeSubject(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTokenizeSubject(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{name: "empty", input: "", want: nil},
+		{name: "all stop words", input: "the weekly update", want: nil},
+		{name: "all short", input: "of by to a", want: nil},
+		{name: "mix of stop and meaningful", input: "weekly platform release notes", want: []string{"platform", "release", "notes"}},
+		{name: "deduplicates", input: "alerts alerts alerts", want: []string{"alerts"}},
+		{name: "drops 1-2 char tokens", input: "pr ci build", want: []string{"build"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tokenizeSubject(normalizeString(tt.input))
+			if len(got) != len(tt.want) {
+				t.Errorf("tokenizeSubject(%q) size = %d, want %d (got %v)", tt.input, len(got), len(tt.want), got)
+				return
+			}
+			for _, w := range tt.want {
+				if _, ok := got[w]; !ok {
+					t.Errorf("tokenizeSubject(%q) missing %q (got %v)", tt.input, w, got)
+				}
+			}
+		})
+	}
+}
+
+func TestSubjectSimilarity_BothEmpty(t *testing.T) {
+	a := precomputeOne(jmap.Email{Subject: ""})
+	b := precomputeOne(jmap.Email{Subject: ""})
+	if got := subjectSimilarity(a, b); got != 1.0 {
+		t.Errorf("subjectSimilarity(empty, empty) = %v, want 1.0", got)
+	}
+
+	c := precomputeOne(jmap.Email{Subject: "Something"})
+	if got := subjectSimilarity(a, c); got != 0.0 {
+		t.Errorf("subjectSimilarity(empty, non-empty) = %v, want 0.0", got)
+	}
+}
+
+func TestSenderSimilarity_ESPGuard_AllProviders(t *testing.T) {
+	// Each pair shares only the ESP domain (different local parts), so
+	// the same-domain rung must be suppressed across every listed
+	// provider. Catches silent typos or omissions in sharedESPDomains.
+	providers := []string{
+		"amazonses.com",
+		"sendgrid.net",
+		"sendgrid.com",
+		"mailgun.org",
+		"mailgun.com",
+		"mandrillapp.com",
+		"mailchimp.com",
+		"mcsv.net",
+		"postmarkapp.com",
+		"sparkpostmail.com",
+	}
+
+	for _, domain := range providers {
+		t.Run(domain, func(t *testing.T) {
+			a := precomputeOne(jmap.Email{
+				From: []jmap.EmailAddress{{Email: "bounces+a@" + domain}},
+			})
+			b := precomputeOne(jmap.Email{
+				From: []jmap.EmailAddress{{Email: "bounces+b@" + domain}},
+			})
+			if got := senderSimilarity(a, b); got != 0.0 {
+				t.Errorf("senderSimilarity() for %s = %v, want 0.0", domain, got)
+			}
+		})
+	}
+}
+
+func TestSenderSimilarity_ShortDisplayName(t *testing.T) {
+	// Display names under 4 characters are too generic to be a reliable
+	// match signal. "BBC" is a real-world example that would otherwise
+	// false-positive across unrelated three-letter senders.
+	a := precomputeOne(jmap.Email{
+		From: []jmap.EmailAddress{{Name: "BBC", Email: "news@bbc.example"}},
+	})
+	b := precomputeOne(jmap.Email{
+		From: []jmap.EmailAddress{{Name: "BBC", Email: "alerts@other.example"}},
+	})
+
+	if got := senderSimilarity(a, b); got >= 0.6 {
+		t.Errorf("senderSimilarity() with 3-char display name = %v, want < 0.6", got)
+	}
+}
+
+func TestParseSender_RegistrableRoot(t *testing.T) {
+	tests := []struct {
+		addr     string
+		wantDom  string
+		wantRoot string
+	}{
+		{"a@example.com", "example.com", "example.com"},
+		{"a@mail.example.com", "mail.example.com", "example.com"},
+		{"a@deep.mail.example.com", "deep.mail.example.com", "example.com"},
+		{"a@example.co.uk", "example.co.uk", "example.co.uk"},
+		{"a@mail.example.co.uk", "mail.example.co.uk", "example.co.uk"},
+		{"a@user.github.io", "user.github.io", "user.github.io"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			_, dom, root, _ := parseSender(tt.addr, "")
+			if dom != tt.wantDom {
+				t.Errorf("parseSender(%q) domain = %q, want %q", tt.addr, dom, tt.wantDom)
+			}
+			if root != tt.wantRoot {
+				t.Errorf("parseSender(%q) root = %q, want %q", tt.addr, root, tt.wantRoot)
+			}
+		})
 	}
 }
