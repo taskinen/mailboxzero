@@ -1,4 +1,4 @@
-module mailboxzero
+module github.com/taskinen/mailboxzero
 
 go 1.26
 

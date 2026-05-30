@@ -1,7 +1,7 @@
 package similarity
 
 import (
-	"mailboxzero/internal/jmap"
+	"github.com/taskinen/mailboxzero/internal/jmap"
 	"regexp"
 	"sort"
 	"strings"

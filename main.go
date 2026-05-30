@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"log"
-	"mailboxzero/internal/config"
-	"mailboxzero/internal/jmap"
-	"mailboxzero/internal/server"
+
+	"github.com/taskinen/mailboxzero/internal/config"
+	"github.com/taskinen/mailboxzero/internal/jmap"
+	"github.com/taskinen/mailboxzero/internal/server"
 )
 
 func main() {

@@ -2,7 +2,7 @@ package similarity
 
 import (
 	"fmt"
-	"mailboxzero/internal/jmap"
+	"github.com/taskinen/mailboxzero/internal/jmap"
 	"strings"
 	"testing"
 	"time"

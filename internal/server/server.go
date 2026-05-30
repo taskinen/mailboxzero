@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"mailboxzero/internal/config"
-	"mailboxzero/internal/jmap"
-	"mailboxzero/internal/similarity"
+	"github.com/taskinen/mailboxzero/internal/config"
+	"github.com/taskinen/mailboxzero/internal/jmap"
+	"github.com/taskinen/mailboxzero/internal/similarity"
 
 	"github.com/gorilla/mux"
 )
