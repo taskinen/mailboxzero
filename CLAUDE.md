@@ -13,7 +13,7 @@ Mailbox Zero is a Go-based web application that helps users clean up their Fastm
 ## Architecture
 
 ### Tech Stack
-- **Backend:** Go 1.21+ with Gorilla Mux router
+- **Backend:** Go 1.26+ with Gorilla Mux router
 - **Frontend:** Vanilla HTML5, CSS3, JavaScript (ES6+)
 - **Email Protocol:** JMAP (JSON Meta Application Protocol)
 - **Email Provider:** Fastmail
@@ -330,7 +330,7 @@ golangci-lint run
 
 ### Docker Deployment (Future Enhancement)
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN go build -o mailboxzero main.go
