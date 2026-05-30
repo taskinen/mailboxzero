@@ -12,12 +12,23 @@ type EmailGroup struct {
 	Similarity float64
 }
 
+// features holds the per-email values used during similarity comparison.
+// Computing these once per email turns the O(N²) pairwise work from
+// "re-normalize + re-tokenize + Levenshtein on bodies" into cheap lookups.
+type features struct {
+	email       jmap.Email
+	subjectNorm string
+	senderNorm  string
+	bodyTokens  map[string]struct{}
+}
+
 func FindSimilarEmails(emails []jmap.Email, threshold float64) []jmap.Email {
 	if len(emails) == 0 {
 		return nil
 	}
 
-	groups := groupSimilarEmails(emails, threshold)
+	feats := precomputeAll(emails)
+	groups := groupSimilarFeatures(feats, threshold)
 
 	if len(groups) == 0 {
 		return nil
@@ -31,18 +42,16 @@ func FindSimilarEmails(emails []jmap.Email, threshold float64) []jmap.Email {
 }
 
 func FindSimilarToEmail(targetEmail jmap.Email, emails []jmap.Email, threshold float64) []jmap.Email {
-	var similarEmails []jmap.Email
+	similarEmails := []jmap.Email{targetEmail}
 
-	// Always include the target email itself as the first result
-	similarEmails = append(similarEmails, targetEmail)
-
+	target := precomputeOne(targetEmail)
 	for _, email := range emails {
 		if email.ID == targetEmail.ID {
 			continue
 		}
 
-		similarity := calculateEmailSimilarity(targetEmail, email)
-		if similarity >= threshold {
+		f := precomputeOne(email)
+		if similarityWithThreshold(target, f, threshold) >= threshold {
 			similarEmails = append(similarEmails, email)
 		}
 	}
@@ -51,36 +60,48 @@ func FindSimilarToEmail(targetEmail jmap.Email, emails []jmap.Email, threshold f
 }
 
 func groupSimilarEmails(emails []jmap.Email, threshold float64) []EmailGroup {
-	var groups []EmailGroup
-	processed := make(map[string]bool)
+	if len(emails) == 0 {
+		return nil
+	}
+	return groupSimilarFeatures(precomputeAll(emails), threshold)
+}
 
-	for i, email1 := range emails {
-		if processed[email1.ID] {
+func groupSimilarFeatures(feats []features, threshold float64) []EmailGroup {
+	var groups []EmailGroup
+	processed := make([]bool, len(feats))
+
+	for i := range feats {
+		if processed[i] {
 			continue
 		}
 
-		var group []jmap.Email
-		group = append(group, email1)
-		processed[email1.ID] = true
+		groupEmails := []jmap.Email{feats[i].email}
+		processed[i] = true
 
-		for j := i + 1; j < len(emails); j++ {
-			email2 := emails[j]
-			if processed[email2.ID] {
+		var simSum float64
+		var simCount int
+
+		for j := i + 1; j < len(feats); j++ {
+			if processed[j] {
 				continue
 			}
-
-			similarity := calculateEmailSimilarity(email1, email2)
-			if similarity >= threshold {
-				group = append(group, email2)
-				processed[email2.ID] = true
+			sim := similarityWithThreshold(feats[i], feats[j], threshold)
+			if sim >= threshold {
+				groupEmails = append(groupEmails, feats[j].email)
+				processed[j] = true
+				simSum += sim
+				simCount++
 			}
 		}
 
-		if len(group) > 1 {
-			avgSimilarity := calculateGroupSimilarity(group)
+		if len(groupEmails) > 1 {
+			avg := 0.0
+			if simCount > 0 {
+				avg = simSum / float64(simCount)
+			}
 			groups = append(groups, EmailGroup{
-				Emails:     group,
-				Similarity: avgSimilarity,
+				Emails:     groupEmails,
+				Similarity: avg,
 			})
 		}
 	}
@@ -89,23 +110,10 @@ func groupSimilarEmails(emails []jmap.Email, threshold float64) []EmailGroup {
 }
 
 func calculateEmailSimilarity(email1, email2 jmap.Email) float64 {
-	subjectSim := stringSimilarity(email1.Subject, email2.Subject)
-
-	var senderSim float64
-	if len(email1.From) > 0 && len(email2.From) > 0 {
-		senderSim = stringSimilarity(email1.From[0].Email, email2.From[0].Email)
-	}
-
-	var bodySim float64
-	body1 := extractEmailBody(email1)
-	body2 := extractEmailBody(email2)
-	if body1 != "" && body2 != "" {
-		bodySim = stringSimilarity(body1, body2)
-	}
-
-	weightedSimilarity := (subjectSim*0.4 + senderSim*0.4 + bodySim*0.2)
-
-	return weightedSimilarity
+	f1 := precomputeOne(email1)
+	f2 := precomputeOne(email2)
+	// threshold=0 disables the short-circuit so the full score is always computed.
+	return similarityWithThreshold(f1, f2, 0)
 }
 
 func calculateGroupSimilarity(emails []jmap.Email) float64 {
@@ -113,13 +121,13 @@ func calculateGroupSimilarity(emails []jmap.Email) float64 {
 		return 0.0
 	}
 
+	feats := precomputeAll(emails)
 	var totalSimilarity float64
 	var count int
 
-	for i := 0; i < len(emails); i++ {
-		for j := i + 1; j < len(emails); j++ {
-			similarity := calculateEmailSimilarity(emails[i], emails[j])
-			totalSimilarity += similarity
+	for i := 0; i < len(feats); i++ {
+		for j := i + 1; j < len(feats); j++ {
+			totalSimilarity += similarityWithThreshold(feats[i], feats[j], 0)
 			count++
 		}
 	}
@@ -131,10 +139,63 @@ func calculateGroupSimilarity(emails []jmap.Email) float64 {
 	return totalSimilarity / float64(count)
 }
 
-func stringSimilarity(s1, s2 string) float64 {
-	s1 = normalizeString(s1)
-	s2 = normalizeString(s2)
+func precomputeAll(emails []jmap.Email) []features {
+	out := make([]features, len(emails))
+	for i, e := range emails {
+		out[i] = precomputeOne(e)
+	}
+	return out
+}
 
+func precomputeOne(email jmap.Email) features {
+	var sender string
+	if len(email.From) > 0 {
+		sender = normalizeString(email.From[0].Email)
+	}
+	return features{
+		email:       email,
+		subjectNorm: normalizeString(email.Subject),
+		senderNorm:  sender,
+		bodyTokens:  tokenizeBody(extractEmailBody(email)),
+	}
+}
+
+// similarityWithThreshold computes the weighted similarity between two
+// precomputed feature sets. It short-circuits as soon as the partial score
+// plus the maximum remaining contribution falls below threshold.
+func similarityWithThreshold(a, b features, threshold float64) float64 {
+	subjectSim := normalizedStringSimilarity(a.subjectNorm, b.subjectNorm)
+	score := subjectSim * 0.4
+	if score+0.6 < threshold {
+		return 0
+	}
+
+	var senderSim float64
+	if a.senderNorm != "" && b.senderNorm != "" {
+		senderSim = normalizedStringSimilarity(a.senderNorm, b.senderNorm)
+	}
+	score += senderSim * 0.4
+	if score+0.2 < threshold {
+		return 0
+	}
+
+	var bodySim float64
+	if len(a.bodyTokens) > 0 && len(b.bodyTokens) > 0 {
+		bodySim = jaccardSimilarity(a.bodyTokens, b.bodyTokens)
+	}
+	score += bodySim * 0.2
+
+	return score
+}
+
+func stringSimilarity(s1, s2 string) float64 {
+	return normalizedStringSimilarity(normalizeString(s1), normalizeString(s2))
+}
+
+// normalizedStringSimilarity is stringSimilarity for inputs that have already
+// been normalized. Callers in the hot path use this to avoid re-running
+// normalizeString on the same value for every pair.
+func normalizedStringSimilarity(s1, s2 string) float64 {
 	if s1 == s2 {
 		return 1.0
 	}
@@ -236,6 +297,54 @@ func extractEmailBody(email jmap.Email) string {
 	}
 
 	return ""
+}
+
+// tokenizeBody returns the set of normalized word-tokens of length ≥ 3 from
+// the email body. Jaccard on these is O(L) per pair, replacing the old
+// O(L₁·L₂) Levenshtein on body strings that could be tens of thousands of
+// characters.
+func tokenizeBody(body string) map[string]struct{} {
+	if body == "" {
+		return nil
+	}
+	normalized := normalizeString(body)
+	if normalized == "" {
+		return nil
+	}
+	tokens := make(map[string]struct{})
+	for _, w := range strings.Fields(normalized) {
+		if len(w) >= 3 {
+			tokens[w] = struct{}{}
+		}
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+	return tokens
+}
+
+func jaccardSimilarity(a, b map[string]struct{}) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+
+	small, large := a, b
+	if len(b) < len(a) {
+		small, large = b, a
+	}
+
+	intersect := 0
+	for token := range small {
+		if _, ok := large[token]; ok {
+			intersect++
+		}
+	}
+
+	union := len(a) + len(b) - intersect
+	if union == 0 {
+		return 0
+	}
+	return float64(intersect) / float64(union)
 }
 
 func min(a, b, c int) int {

@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"mailboxzero/internal/config"
 	"mailboxzero/internal/jmap"
@@ -15,10 +17,16 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const inboxCacheTTL = 60 * time.Second
+
 type Server struct {
 	config     *config.Config
 	jmapClient jmap.JMAPClient
 	templates  *template.Template
+
+	inboxMu       sync.Mutex
+	inboxCache    []jmap.Email
+	inboxCachedAt time.Time
 }
 
 type PageData struct {
@@ -114,7 +122,7 @@ func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emails, err := s.jmapClient.GetInboxEmails(1000)
+	emails, err := s.getInboxForSimilarity()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get emails: %v", err), http.StatusInternalServerError)
 		return
@@ -167,6 +175,7 @@ func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to archive emails: %v", err), http.StatusInternalServerError)
 		return
 	}
+	s.invalidateInboxCache()
 
 	response := map[string]interface{}{
 		"success": true,
@@ -194,6 +203,7 @@ func (s *Server) handleUnarchive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to unarchive emails: %v", err), http.StatusInternalServerError)
 		return
 	}
+	s.invalidateInboxCache()
 
 	response := map[string]interface{}{
 		"success": true,
@@ -208,4 +218,37 @@ func (s *Server) handleUnarchive(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// getInboxForSimilarity returns the cached inbox slice used by /api/similar.
+// The cache avoids re-fetching 1000 emails over JMAP on every click of "Find
+// Similar" or every iteration of the rapid "Archive & Find Next" sweep.
+// handleArchive and handleUnarchive invalidate it so the next call sees the
+// post-archive state.
+func (s *Server) getInboxForSimilarity() ([]jmap.Email, error) {
+	s.inboxMu.Lock()
+	if s.inboxCache != nil && time.Since(s.inboxCachedAt) < inboxCacheTTL {
+		cached := s.inboxCache
+		s.inboxMu.Unlock()
+		return cached, nil
+	}
+	s.inboxMu.Unlock()
+
+	emails, err := s.jmapClient.GetInboxEmails(1000)
+	if err != nil {
+		return nil, err
+	}
+
+	s.inboxMu.Lock()
+	s.inboxCache = emails
+	s.inboxCachedAt = time.Now()
+	s.inboxMu.Unlock()
+	return emails, nil
+}
+
+func (s *Server) invalidateInboxCache() {
+	s.inboxMu.Lock()
+	s.inboxCache = nil
+	s.inboxCachedAt = time.Time{}
+	s.inboxMu.Unlock()
 }

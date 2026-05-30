@@ -143,8 +143,8 @@ mock_mode: false          # Set to true to use built-in sample data (no JMAP nee
 The application uses fuzzy matching with weighted scoring:
 
 - **Subject Similarity** (40%): Compares email subjects using Levenshtein distance
-- **Sender Similarity** (40%): Compares sender email addresses
-- **Content Similarity** (20%): Compares email preview/body content
+- **Sender Similarity** (40%): Compares sender email addresses using Levenshtein distance
+- **Content Similarity** (20%): Jaccard overlap of normalized word tokens (length ≥ 3) extracted from the preview/body
 
 Additional boosters:
 - Common words in subjects increase similarity

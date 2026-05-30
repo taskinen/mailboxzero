@@ -84,10 +84,12 @@ mailboxzero/
 - **File:** `similarity.go`
 - **Purpose:** Advanced fuzzy matching for email similarity
 - **Algorithm:**
-  - **Subject Similarity (40% weight):** Levenshtein distance with normalization
-  - **Sender Similarity (40% weight):** Email address comparison
-  - **Content Similarity (20% weight):** Body/preview text analysis
+  - **Subject Similarity (40% weight):** Levenshtein distance over pre-normalized strings
+  - **Sender Similarity (40% weight):** Levenshtein distance over pre-normalized sender email address
+  - **Content Similarity (20% weight):** Jaccard similarity over normalized word tokens (length ≥ 3) extracted from the preview/body
 - **Features:**
+  - Per-email features (`subjectNorm`, `senderNorm`, `bodyTokens`) precomputed once per call so the inner pairwise compare avoids re-normalizing or re-tokenizing the same strings
+  - Threshold-aware short-circuit: each weighted stage bails out as soon as the partial score plus the maximum remaining contribution falls below `threshold`
   - String normalization (lowercase, punctuation removal)
   - Common word detection for similarity boosting
   - Configurable threshold matching
@@ -108,6 +110,7 @@ mailboxzero/
   - JSON API responses
   - Error handling and logging
   - Static file serving
+  - Inbox cache for `/api/similar`: the 1000-email JMAP fetch is cached in-process for 60 seconds (`inboxCacheTTL`) and invalidated at the end of `handleArchive`/`handleUnarchive`, so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP
 
 #### 5. Frontend Interface (`web/`)
 - **Template:** `index.html` - Responsive dual-pane layout
@@ -247,7 +250,7 @@ go run main.go
 ```
 
 **Mock Mode Features:**
-- Uses realistic sample email data (40+ emails from various senders)
+- Uses realistic sample email data (~32–52 emails: 10 senders × 3–5 messages plus 2 unique)
 - No real JMAP connection required
 - Sample emails include groups of similar messages for testing similarity matching
 - Simulates archiving operations without affecting real emails

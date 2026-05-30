@@ -1,6 +1,7 @@
 package similarity
 
 import (
+	"fmt"
 	"mailboxzero/internal/jmap"
 	"strings"
 	"testing"
@@ -656,6 +657,91 @@ func BenchmarkLevenshteinDistance(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		levenshteinDistance(s1, s2)
+	}
+}
+
+func TestJaccardSimilarity(t *testing.T) {
+	mkSet := func(words ...string) map[string]struct{} {
+		s := make(map[string]struct{}, len(words))
+		for _, w := range words {
+			s[w] = struct{}{}
+		}
+		return s
+	}
+
+	tests := []struct {
+		name string
+		a    map[string]struct{}
+		b    map[string]struct{}
+		want float64
+	}{
+		{name: "identical sets", a: mkSet("foo", "bar"), b: mkSet("foo", "bar"), want: 1.0},
+		{name: "disjoint sets", a: mkSet("foo", "bar"), b: mkSet("baz", "qux"), want: 0.0},
+		{name: "partial overlap", a: mkSet("foo", "bar", "baz"), b: mkSet("foo", "bar", "qux"), want: 0.5},
+		{name: "first empty", a: nil, b: mkSet("foo"), want: 0.0},
+		{name: "second empty", a: mkSet("foo"), b: nil, want: 0.0},
+		{name: "both empty", a: nil, b: nil, want: 0.0},
+		{name: "subset", a: mkSet("foo"), b: mkSet("foo", "bar"), want: 0.5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := jaccardSimilarity(tt.a, tt.b)
+			if got != tt.want {
+				t.Errorf("jaccardSimilarity() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTokenizeBody(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want []string // expected tokens (order doesn't matter, presence does)
+	}{
+		{name: "empty", body: "", want: nil},
+		{name: "short words dropped", body: "a is to be", want: nil},
+		{name: "mixed lengths keeps ≥3", body: "Hello a world", want: []string{"hello", "world"}},
+		{name: "normalization", body: "Hello, World! 2026", want: []string{"hello", "world", "2026"}},
+		{name: "dedups", body: "weekly weekly weekly", want: []string{"weekly"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tokenizeBody(tt.body)
+			if len(got) != len(tt.want) {
+				t.Errorf("tokenizeBody(%q) size = %d, want %d (got %v)", tt.body, len(got), len(tt.want), got)
+				return
+			}
+			for _, w := range tt.want {
+				if _, ok := got[w]; !ok {
+					t.Errorf("tokenizeBody(%q) missing %q (got %v)", tt.body, w, got)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkFindSimilarEmails exercises the full pipeline on a synthetic
+// 1000-email corpus so the speedup from precompute + Jaccard is measurable.
+func BenchmarkFindSimilarEmails(b *testing.B) {
+	emails := make([]jmap.Email, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		emails = append(emails, jmap.Email{
+			ID:      fmt.Sprintf("email-%d", i),
+			Subject: fmt.Sprintf("Weekly Newsletter Issue %d", i%50),
+			From: []jmap.EmailAddress{{
+				Email: fmt.Sprintf("sender%d@example.com", i%20),
+			}},
+			Preview:    fmt.Sprintf("This is preview number %d about widgets and gadgets and things.", i%30),
+			ReceivedAt: time.Now(),
+		})
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		FindSimilarEmails(emails, 0.75)
 	}
 }
 

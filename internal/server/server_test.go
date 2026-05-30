@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"mailboxzero/internal/config"
 	"mailboxzero/internal/jmap"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // setupTestServer creates a test server with mock JMAP client
@@ -824,5 +826,221 @@ func TestServer_ConfigValues(t *testing.T) {
 
 	if server.config.DefaultSimilarity != 75 {
 		t.Errorf("Test server DefaultSimilarity = %v, want 75", server.config.DefaultSimilarity)
+	}
+}
+
+// countingJMAPClient wraps a JMAPClient and counts how many times the
+// full 1000-email inbox fetch used by handleFindSimilar is invoked.
+type countingJMAPClient struct {
+	jmap.JMAPClient
+	getInboxCalls int
+}
+
+func (c *countingJMAPClient) GetInboxEmails(limit int) ([]jmap.Email, error) {
+	c.getInboxCalls++
+	return c.JMAPClient.GetInboxEmails(limit)
+}
+
+func setupCountingTestServer(t *testing.T) (*Server, *countingJMAPClient) {
+	t.Helper()
+
+	cfg := &config.Config{
+		Server: struct {
+			Port int    `yaml:"port"`
+			Host string `yaml:"host"`
+		}{Port: 8080, Host: "localhost"},
+		DryRun:            true,
+		DefaultSimilarity: 75,
+		MockMode:          true,
+	}
+
+	counter := &countingJMAPClient{JMAPClient: jmap.NewMockClient()}
+
+	tmpDir := t.TempDir()
+	templatePath := tmpDir + "/web/templates"
+	if err := os.MkdirAll(templatePath, 0755); err != nil {
+		t.Fatalf("Failed to create template directory: %v", err)
+	}
+	if err := os.WriteFile(templatePath+"/index.html", []byte("<html></html>"), 0644); err != nil {
+		t.Fatalf("Failed to write template file: %v", err)
+	}
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	t.Cleanup(func() { os.Chdir(oldWd) })
+
+	server, err := New(cfg, counter)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	return server, counter
+}
+
+func TestHandleFindSimilar_CachesInbox(t *testing.T) {
+	server, counter := setupCountingTestServer(t)
+
+	body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		server.handleFindSimilar(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("call %d: status = %v, want 200", i, w.Code)
+		}
+	}
+
+	if counter.getInboxCalls != 1 {
+		t.Errorf("expected 1 inbox fetch across 3 calls, got %d", counter.getInboxCalls)
+	}
+}
+
+func TestHandleArchive_InvalidatesInboxCache(t *testing.T) {
+	server, counter := setupCountingTestServer(t)
+
+	body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
+	req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	server.handleFindSimilar(httptest.NewRecorder(), req)
+
+	if counter.getInboxCalls != 1 {
+		t.Fatalf("setup: expected 1 inbox fetch, got %d", counter.getInboxCalls)
+	}
+
+	// Archive an arbitrary id — under dry-run this is a no-op against the mock
+	// but the handler still invalidates the cache.
+	archiveBody, _ := json.Marshal(ArchiveRequest{EmailIDs: []string{"email-0-0"}})
+	archiveReq := httptest.NewRequest("POST", "/api/archive", bytes.NewReader(archiveBody))
+	archiveReq.Header.Set("Content-Type", "application/json")
+	archiveW := httptest.NewRecorder()
+	server.handleArchive(archiveW, archiveReq)
+	if archiveW.Code != http.StatusOK {
+		t.Fatalf("archive status = %v, want 200", archiveW.Code)
+	}
+
+	// Next /api/similar should re-fetch.
+	req2 := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	server.handleFindSimilar(httptest.NewRecorder(), req2)
+
+	if counter.getInboxCalls != 2 {
+		t.Errorf("expected 2 inbox fetches after archive, got %d", counter.getInboxCalls)
+	}
+}
+
+func TestGetInboxForSimilarity_TTLExpiration(t *testing.T) {
+	server, counter := setupCountingTestServer(t)
+
+	body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
+	req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	server.handleFindSimilar(httptest.NewRecorder(), req)
+
+	if counter.getInboxCalls != 1 {
+		t.Fatalf("setup: expected 1 inbox fetch, got %d", counter.getInboxCalls)
+	}
+
+	// Backdate the cache timestamp past the TTL window so the next call
+	// must re-fetch instead of serving stale data indefinitely.
+	server.inboxMu.Lock()
+	server.inboxCachedAt = time.Now().Add(-2 * inboxCacheTTL)
+	server.inboxMu.Unlock()
+
+	req2 := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	server.handleFindSimilar(httptest.NewRecorder(), req2)
+
+	if counter.getInboxCalls != 2 {
+		t.Errorf("expected 2 inbox fetches after TTL expiration, got %d", counter.getInboxCalls)
+	}
+}
+
+// erroringJMAPClient always fails on GetInboxEmails; the embedded JMAPClient
+// supplies stub implementations for every other interface method via the mock.
+type erroringJMAPClient struct {
+	jmap.JMAPClient
+	calls int
+	err   error
+}
+
+func (c *erroringJMAPClient) GetInboxEmails(limit int) ([]jmap.Email, error) {
+	c.calls++
+	return nil, c.err
+}
+
+func TestGetInboxForSimilarity_ErrorNotCached(t *testing.T) {
+	cfg := &config.Config{
+		Server: struct {
+			Port int    `yaml:"port"`
+			Host string `yaml:"host"`
+		}{Port: 8080, Host: "localhost"},
+		DryRun:            true,
+		DefaultSimilarity: 75,
+		MockMode:          true,
+	}
+
+	failing := &erroringJMAPClient{
+		JMAPClient: jmap.NewMockClient(),
+		err:        errors.New("jmap transient failure"),
+	}
+
+	tmpDir := t.TempDir()
+	templatePath := tmpDir + "/web/templates"
+	if err := os.MkdirAll(templatePath, 0755); err != nil {
+		t.Fatalf("Failed to create template directory: %v", err)
+	}
+	if err := os.WriteFile(templatePath+"/index.html", []byte("<html></html>"), 0644); err != nil {
+		t.Fatalf("Failed to write template file: %v", err)
+	}
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	t.Cleanup(func() { os.Chdir(oldWd) })
+
+	server, err := New(cfg, failing)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
+
+	// Both calls must propagate the JMAP error (HTTP 500) AND make their own
+	// underlying fetch. Caching a nil/empty result on error would poison the
+	// cache for the full TTL window after a single transient failure.
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		server.handleFindSimilar(w, req)
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("call %d: status = %v, want 500", i, w.Code)
+		}
+	}
+
+	if failing.calls != 2 {
+		t.Errorf("expected 2 underlying fetches across 2 failing /api/similar calls, got %d", failing.calls)
+	}
+}
+
+func TestHandleUnarchive_InvalidatesInboxCache(t *testing.T) {
+	server, counter := setupCountingTestServer(t)
+
+	body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
+	req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	server.handleFindSimilar(httptest.NewRecorder(), req)
+
+	unarchiveBody, _ := json.Marshal(ArchiveRequest{EmailIDs: []string{"email-0-0"}})
+	unarchiveReq := httptest.NewRequest("POST", "/api/unarchive", bytes.NewReader(unarchiveBody))
+	unarchiveReq.Header.Set("Content-Type", "application/json")
+	server.handleUnarchive(httptest.NewRecorder(), unarchiveReq)
+
+	req2 := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	server.handleFindSimilar(httptest.NewRecorder(), req2)
+
+	if counter.getInboxCalls != 2 {
+		t.Errorf("expected 2 inbox fetches after unarchive, got %d", counter.getInboxCalls)
 	}
 }
