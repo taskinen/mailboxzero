@@ -48,7 +48,8 @@ mailboxzero/
 │   │   ├── client.go           # JMAPClient interface + real Client transport
 │   │   ├── email.go            # Email/Mailbox types + Archive/Unarchive operations
 │   │   ├── mock.go             # MockClient with built-in sample data for mock mode
-│   │   ├── fakeserver_test.go  # Fake JMAP server for testing the real Client over HTTP
+│   │   ├── client_test.go      # Authenticate and GetMailboxes against the fake server
+│   │   ├── fakeserver_test.go  # Fake JMAP server (session + API) for testing the real Client over HTTP
 │   │   ├── jmap_test.go
 │   │   └── mock_test.go
 │   ├── server/
@@ -429,7 +430,7 @@ log.SetFlags(log.LstdFlags | log.Lshortfile)
 ### Test Coverage
 The project includes comprehensive unit tests for all packages:
 - **Config Package:** Configuration loading, validation, and error handling
-- **JMAP Package:** Data parsing, mock client functionality, helper functions, and the real Client's requests and responses via a fake JMAP server (`newFakeJMAPServer` in `fakeserver_test.go`)
+- **JMAP Package:** Data parsing, mock client functionality, helper functions, and the real Client's requests and responses via a fake JMAP server (`newFakeJMAPServer` in `fakeserver_test.go`), including authentication against its session resource and bearer-token check
 - **Similarity Package:** Fuzzy matching algorithms, Levenshtein distance, email similarity
 - **Server Package:** HTTP handlers, API endpoints, and request/response handling
 
