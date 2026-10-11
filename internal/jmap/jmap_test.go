@@ -360,6 +360,137 @@ func TestClient_MakeRequest_Unauthenticated(t *testing.T) {
 	}
 }
 
+// TestClient_InboxPage_SingleMailboxLookup checks that loading an inbox page
+// looks the mailboxes up only once: one HTTP request for Mailbox/get and one
+// for Email/query plus Email/get.
+func TestClient_InboxPage_SingleMailboxLookup(t *testing.T) {
+	tests := []struct {
+		name      string
+		fetch     func(c *Client) ([]Email, int, error)
+		wantTotal int
+	}{
+		{
+			name: "GetInboxEmailsWithCountPaginated",
+			fetch: func(c *Client) ([]Email, int, error) {
+				info, err := c.GetInboxEmailsWithCountPaginated(2, 40)
+				if err != nil {
+					return nil, 0, err
+				}
+				return info.Emails, info.TotalCount, nil
+			},
+			wantTotal: 42,
+		},
+		{
+			name: "GetInboxEmailsPaginated",
+			fetch: func(c *Client) ([]Email, int, error) {
+				emails, err := c.GetInboxEmailsPaginated(2, 40)
+				return emails, 0, err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The handler runs on the server's goroutine; it reports the
+			// methods of each HTTP request and the Email/query arguments
+			// back to the test through channels.
+			requests := make(chan []string, 10)
+			queryArgs := make(chan map[string]interface{}, 10)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					MethodCalls [][]interface{} `json:"methodCalls"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode JMAP request: %v", err)
+					return
+				}
+
+				var methods []string
+				var responses []interface{}
+				for _, call := range req.MethodCalls {
+					name, _ := call[0].(string)
+					methods = append(methods, name)
+					var result map[string]interface{}
+					switch name {
+					case "Mailbox/get":
+						result = map[string]interface{}{"accountId": "acc", "list": []interface{}{
+							map[string]interface{}{"id": "mb-inbox", "name": "Inbox", "role": "inbox", "totalEmails": 42},
+							map[string]interface{}{"id": "mb-archive", "name": "Archive", "role": "archive", "totalEmails": 7},
+						}}
+					case "Email/query":
+						args, _ := call[1].(map[string]interface{})
+						queryArgs <- args
+						result = map[string]interface{}{"accountId": "acc", "ids": []string{"e1", "e2"}}
+					case "Email/get":
+						result = map[string]interface{}{"accountId": "acc", "list": []interface{}{
+							map[string]interface{}{
+								"id":         "e1",
+								"subject":    "First",
+								"from":       []interface{}{map[string]interface{}{"name": "Alice", "email": "alice@example.com"}},
+								"receivedAt": "2026-10-01T09:00:00Z",
+								"preview":    "Hello",
+							},
+							map[string]interface{}{"id": "e2", "subject": "Second"},
+						}}
+					default:
+						t.Errorf("unexpected JMAP method %v", name)
+					}
+					responses = append(responses, []interface{}{name, result, call[2]})
+				}
+				requests <- methods
+				json.NewEncoder(w).Encode(map[string]interface{}{"methodResponses": responses})
+			}))
+			defer srv.Close()
+
+			c := &Client{
+				apiToken:   "test-token",
+				httpClient: srv.Client(),
+				session: &Session{
+					APIUrl:          srv.URL,
+					PrimaryAccounts: map[string]string{"urn:ietf:params:jmap:mail": "acc"},
+				},
+			}
+
+			emails, total, err := tt.fetch(c)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Every request has been answered, so the handler is done
+			// sending on the channels.
+			close(requests)
+			close(queryArgs)
+			var gotRequests [][]string
+			for methods := range requests {
+				gotRequests = append(gotRequests, methods)
+			}
+			gotJSON, _ := json.Marshal(gotRequests)
+			if want := `[["Mailbox/get"],["Email/query","Email/get"]]`; string(gotJSON) != want {
+				t.Errorf("JMAP requests = %s, want %s", gotJSON, want)
+			}
+
+			args := <-queryArgs
+			filter, _ := json.Marshal(args["filter"])
+			if string(filter) != `{"inMailbox":"mb-inbox"}` {
+				t.Errorf("Email/query filter = %s, want inbox filter", filter)
+			}
+			if args["limit"] != float64(2) || args["position"] != float64(40) {
+				t.Errorf("Email/query limit/position = %v/%v, want 2/40", args["limit"], args["position"])
+			}
+
+			if total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", total, tt.wantTotal)
+			}
+			if len(emails) != 2 {
+				t.Fatalf("got %d emails, want 2", len(emails))
+			}
+			if emails[0].ID != "e1" || emails[0].Subject != "First" || emails[0].From[0].Email != "alice@example.com" {
+				t.Errorf("first email = %+v, want e1 from alice@example.com", emails[0])
+			}
+		})
+	}
+}
+
 func TestClient_GetInboxEmails(t *testing.T) {
 	// Test with mock client
 	mockClient := NewMockClient()

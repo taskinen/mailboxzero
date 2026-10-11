@@ -150,6 +150,23 @@ func (c *Client) GetMailboxes() ([]Mailbox, error) {
 	return mailboxes, nil
 }
 
+// inboxMailbox returns the account's inbox mailbox, including its email
+// count.
+func (c *Client) inboxMailbox() (Mailbox, error) {
+	mailboxes, err := c.GetMailboxes()
+	if err != nil {
+		return Mailbox{}, fmt.Errorf("failed to get mailboxes: %w", err)
+	}
+
+	for _, mb := range mailboxes {
+		if mb.Role == "inbox" {
+			return mb, nil
+		}
+	}
+
+	return Mailbox{}, fmt.Errorf("inbox not found")
+}
+
 func (c *Client) GetInboxEmails(limit int) ([]Email, error) {
 	return c.GetInboxEmailsPaginated(limit, 0)
 }
@@ -160,27 +177,21 @@ func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 		return nil, fmt.Errorf("no primary account found")
 	}
 
-	mailboxes, err := c.GetMailboxes()
+	inbox, err := c.inboxMailbox()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get mailboxes: %w", err)
+		return nil, err
 	}
 
-	var inboxID string
-	for _, mb := range mailboxes {
-		if mb.Role == "inbox" {
-			inboxID = mb.ID
-			break
-		}
-	}
+	return c.queryMailboxEmails(accountID, inbox.ID, limit, offset)
+}
 
-	if inboxID == "" {
-		return nil, fmt.Errorf("inbox not found")
-	}
-
+// queryMailboxEmails fetches one page of a mailbox's emails, newest first and
+// with their bodies, in a single Email/query + Email/get request.
+func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset int) ([]Email, error) {
 	queryParams := map[string]interface{}{
 		"accountId": accountID,
 		"filter": map[string]interface{}{
-			"inMailbox": inboxID,
+			"inMailbox": mailboxID,
 		},
 		"sort": []map[string]interface{}{
 			{"property": "receivedAt", "isAscending": false},
@@ -257,33 +268,20 @@ func (c *Client) GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo
 		return nil, fmt.Errorf("no primary account found")
 	}
 
-	mailboxes, err := c.GetMailboxes()
+	// One Mailbox/get provides both the inbox id and its email count.
+	inbox, err := c.inboxMailbox()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get mailboxes: %w", err)
+		return nil, err
 	}
 
-	var inboxID string
-	var totalCount int
-	for _, mb := range mailboxes {
-		if mb.Role == "inbox" {
-			inboxID = mb.ID
-			totalCount = mb.TotalEmails
-			break
-		}
-	}
-
-	if inboxID == "" {
-		return nil, fmt.Errorf("inbox not found")
-	}
-
-	emails, err := c.GetInboxEmailsPaginated(limit, offset)
+	emails, err := c.queryMailboxEmails(accountID, inbox.ID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get inbox emails: %w", err)
 	}
 
 	return &InboxInfo{
 		Emails:     emails,
-		TotalCount: totalCount,
+		TotalCount: inbox.TotalEmails,
 	}, nil
 }
 
