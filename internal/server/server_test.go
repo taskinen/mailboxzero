@@ -632,9 +632,6 @@ func TestPageData(t *testing.T) {
 	data := PageData{
 		DryRun:            true,
 		DefaultSimilarity: 75,
-		Emails:            []jmap.Email{},
-		GroupedEmails:     []jmap.Email{},
-		SelectedEmailID:   "test-id",
 	}
 
 	if !data.DryRun {
@@ -642,9 +639,6 @@ func TestPageData(t *testing.T) {
 	}
 	if data.DefaultSimilarity != 75 {
 		t.Errorf("PageData.DefaultSimilarity = %v, want 75", data.DefaultSimilarity)
-	}
-	if data.SelectedEmailID != "test-id" {
-		t.Errorf("PageData.SelectedEmailID = %v, want 'test-id'", data.SelectedEmailID)
 	}
 }
 

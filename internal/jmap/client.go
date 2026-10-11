@@ -48,12 +48,6 @@ type Account struct {
 	AccountCapabilities map[string]interface{} `json:"accountCapabilities"`
 }
 
-type Request struct {
-	Using  []string `json:"using"`
-	Method string   `json:"methodCalls"`
-	CallID string   `json:"callId,omitempty"`
-}
-
 type MethodCall []interface{}
 
 type Response struct {
