@@ -2,8 +2,6 @@ package jmap
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -391,85 +389,40 @@ func TestClient_InboxPage_SingleMailboxLookup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// The handler runs on the server's goroutine; it reports the
-			// methods of each HTTP request and the Email/query arguments
-			// back to the test through channels.
-			requests := make(chan []string, 10)
-			queryArgs := make(chan map[string]interface{}, 10)
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var req struct {
-					MethodCalls [][]interface{} `json:"methodCalls"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					t.Errorf("failed to decode JMAP request: %v", err)
-					return
-				}
-
-				var methods []string
-				var responses []interface{}
-				for _, call := range req.MethodCalls {
-					name, _ := call[0].(string)
-					methods = append(methods, name)
-					var result map[string]interface{}
-					switch name {
-					case "Mailbox/get":
-						result = map[string]interface{}{"accountId": "acc", "list": []interface{}{
-							map[string]interface{}{"id": "mb-inbox", "name": "Inbox", "role": "inbox", "totalEmails": 42},
-							map[string]interface{}{"id": "mb-archive", "name": "Archive", "role": "archive", "totalEmails": 7},
-						}}
-					case "Email/query":
-						args, _ := call[1].(map[string]interface{})
-						queryArgs <- args
-						result = map[string]interface{}{"accountId": "acc", "ids": []string{"e1", "e2"}}
-					case "Email/get":
-						result = map[string]interface{}{"accountId": "acc", "list": []interface{}{
-							map[string]interface{}{
-								"id":         "e1",
-								"subject":    "First",
-								"from":       []interface{}{map[string]interface{}{"name": "Alice", "email": "alice@example.com"}},
-								"receivedAt": "2026-10-01T09:00:00Z",
-								"preview":    "Hello",
-							},
-							map[string]interface{}{"id": "e2", "subject": "Second"},
-						}}
-					default:
-						t.Errorf("unexpected JMAP method %v", name)
-					}
-					responses = append(responses, []interface{}{name, result, call[2]})
-				}
-				requests <- methods
-				json.NewEncoder(w).Encode(map[string]interface{}{"methodResponses": responses})
-			}))
-			defer srv.Close()
-
-			c := &Client{
-				apiToken:   "test-token",
-				httpClient: srv.Client(),
-				session: &Session{
-					APIUrl:          srv.URL,
-					PrimaryAccounts: map[string]string{"urn:ietf:params:jmap:mail": "acc"},
+			fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+				"Mailbox/get": mailboxGet(testInbox, testArchive),
+				"Email/query": func(map[string]interface{}) map[string]interface{} {
+					return map[string]interface{}{"accountId": "acc", "ids": []string{"e1", "e2"}}
 				},
-			}
+				"Email/get": func(map[string]interface{}) map[string]interface{} {
+					return map[string]interface{}{"accountId": "acc", "list": []interface{}{
+						map[string]interface{}{
+							"id":         "e1",
+							"subject":    "First",
+							"from":       []interface{}{map[string]interface{}{"name": "Alice", "email": "alice@example.com"}},
+							"receivedAt": "2026-10-01T09:00:00Z",
+							"preview":    "Hello",
+						},
+						map[string]interface{}{"id": "e2", "subject": "Second"},
+					}}
+				},
+			})
 
 			emails, total, err := tt.fetch(c)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			// Every request has been answered, so the handler is done
-			// sending on the channels.
-			close(requests)
-			close(queryArgs)
-			var gotRequests [][]string
-			for methods := range requests {
-				gotRequests = append(gotRequests, methods)
-			}
-			gotJSON, _ := json.Marshal(gotRequests)
+			gotJSON, _ := json.Marshal(fake.requestMethods())
 			if want := `[["Mailbox/get"],["Email/query","Email/get"]]`; string(gotJSON) != want {
 				t.Errorf("JMAP requests = %s, want %s", gotJSON, want)
 			}
 
-			args := <-queryArgs
+			queries := fake.callArgs("Email/query")
+			if len(queries) != 1 {
+				t.Fatalf("got %d Email/query calls, want 1", len(queries))
+			}
+			args := queries[0]
 			filter, _ := json.Marshal(args["filter"])
 			if string(filter) != `{"inMailbox":"mb-inbox"}` {
 				t.Errorf("Email/query filter = %s, want inbox filter", filter)
@@ -576,32 +529,28 @@ func TestClient_ArchiveEmails_Real(t *testing.T) {
 // unarchiving patch just the inbox and archive memberships, so any other
 // mailbox the email belongs to (a Fastmail label) is left untouched.
 func TestClient_MoveEmails_PatchesOnlyInboxAndArchive(t *testing.T) {
-	inbox := map[string]interface{}{"id": "mb-inbox", "name": "Inbox", "role": "inbox"}
-	archive := map[string]interface{}{"id": "mb-archive", "name": "Archive", "role": "archive"}
-	label := map[string]interface{}{"id": "mb-label", "name": "Receipts"}
-
 	tests := []struct {
 		name      string
-		mailboxes []interface{}
+		mailboxes []map[string]interface{}
 		move      func(c *Client, ids []string) error
 		wantPatch string
 		wantErr   string
 	}{
 		{
 			name:      "archive",
-			mailboxes: []interface{}{inbox, archive, label},
+			mailboxes: []map[string]interface{}{testInbox, testArchive, testLabel},
 			move:      func(c *Client, ids []string) error { return c.ArchiveEmails(ids, false) },
 			wantPatch: `{"mailboxIds/mb-archive":true,"mailboxIds/mb-inbox":null}`,
 		},
 		{
 			name:      "unarchive",
-			mailboxes: []interface{}{inbox, archive, label},
+			mailboxes: []map[string]interface{}{testInbox, testArchive, testLabel},
 			move:      func(c *Client, ids []string) error { return c.UnarchiveEmails(ids, false) },
 			wantPatch: `{"mailboxIds/mb-archive":null,"mailboxIds/mb-inbox":true}`,
 		},
 		{
 			name:      "unarchive without archive mailbox",
-			mailboxes: []interface{}{inbox, label},
+			mailboxes: []map[string]interface{}{testInbox, testLabel},
 			move:      func(c *Client, ids []string) error { return c.UnarchiveEmails(ids, false) },
 			wantErr:   "archive folder not found",
 		},
@@ -609,55 +558,18 @@ func TestClient_MoveEmails_PatchesOnlyInboxAndArchive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// The handler runs on the server's goroutine; hand the Email/set
-			// update map back to the test through a channel.
-			updates := make(chan map[string]interface{}, 1)
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var req struct {
-					MethodCalls [][]interface{} `json:"methodCalls"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					t.Errorf("failed to decode JMAP request: %v", err)
-					return
-				}
-				call := req.MethodCalls[0]
-				var result map[string]interface{}
-				switch call[0] {
-				case "Mailbox/get":
-					result = map[string]interface{}{"accountId": "acc", "list": tt.mailboxes}
-				case "Email/set":
-					args, _ := call[1].(map[string]interface{})
-					update, _ := args["update"].(map[string]interface{})
-					updates <- update
-					updated := map[string]interface{}{}
-					for id := range update {
-						updated[id] = nil
-					}
-					result = map[string]interface{}{"accountId": "acc", "updated": updated, "notUpdated": nil}
-				default:
-					t.Errorf("unexpected JMAP method %v", call[0])
-				}
-				json.NewEncoder(w).Encode(map[string]interface{}{
-					"methodResponses": []interface{}{[]interface{}{call[0], result, call[2]}},
-				})
-			}))
-			defer srv.Close()
-
-			c := &Client{
-				apiToken:   "test-token",
-				httpClient: srv.Client(),
-				session: &Session{
-					APIUrl:          srv.URL,
-					PrimaryAccounts: map[string]string{"urn:ietf:params:jmap:mail": "acc"},
-				},
-			}
+			fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+				"Mailbox/get": mailboxGet(tt.mailboxes...),
+				"Email/set":   emailSetAllUpdated,
+			})
 
 			err := tt.move(c, []string{"e1", "e2"})
+			sets := fake.callArgs("Email/set")
 			if tt.wantErr != "" {
 				if err == nil || err.Error() != tt.wantErr {
 					t.Fatalf("error = %v, want %q", err, tt.wantErr)
 				}
-				if len(updates) != 0 {
+				if len(sets) != 0 {
 					t.Error("Email/set was sent even though the move could not be made")
 				}
 				return
@@ -665,8 +577,11 @@ func TestClient_MoveEmails_PatchesOnlyInboxAndArchive(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			if len(sets) != 1 {
+				t.Fatalf("got %d Email/set calls, want 1", len(sets))
+			}
 
-			update := <-updates
+			update, _ := sets[0]["update"].(map[string]interface{})
 			if len(update) != 2 {
 				t.Fatalf("Email/set updated %d emails, want 2", len(update))
 			}
@@ -880,47 +795,18 @@ func TestCheckSetResponse(t *testing.T) {
 // TestClient_MoveEmails_ReportsRejectedEmails checks that archive and
 // unarchive report emails the server refused to move instead of succeeding.
 func TestClient_MoveEmails_ReportsRejectedEmails(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			MethodCalls [][]interface{} `json:"methodCalls"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Errorf("failed to decode JMAP request: %v", err)
-			return
-		}
-		call := req.MethodCalls[0]
-		var result map[string]interface{}
-		switch call[0] {
-		case "Mailbox/get":
-			result = map[string]interface{}{"accountId": "acc", "list": []interface{}{
-				map[string]interface{}{"id": "mb-inbox", "name": "Inbox", "role": "inbox"},
-				map[string]interface{}{"id": "mb-archive", "name": "Archive", "role": "archive"},
-			}}
-		case "Email/set":
-			result = map[string]interface{}{
+	_, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Mailbox/get": mailboxGet(testInbox, testArchive),
+		"Email/set": func(map[string]interface{}) map[string]interface{} {
+			return map[string]interface{}{
 				"accountId": "acc",
 				"updated":   map[string]interface{}{"e1": nil},
 				"notUpdated": map[string]interface{}{
 					"e2": map[string]interface{}{"type": "notFound", "description": "no such email"},
 				},
 			}
-		default:
-			t.Errorf("unexpected JMAP method %v", call[0])
-		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"methodResponses": []interface{}{[]interface{}{call[0], result, call[2]}},
-		})
-	}))
-	defer srv.Close()
-
-	c := &Client{
-		apiToken:   "test-token",
-		httpClient: srv.Client(),
-		session: &Session{
-			APIUrl:          srv.URL,
-			PrimaryAccounts: map[string]string{"urn:ietf:params:jmap:mail": "acc"},
 		},
-	}
+	})
 
 	tests := []struct {
 		name    string
