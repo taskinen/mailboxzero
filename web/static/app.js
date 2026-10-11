@@ -194,9 +194,20 @@ class MailboxZero {
             this.totalInboxCount = inboxInfo.totalCount;
             
             // Calculate pagination
-            this.totalPages = Math.ceil(this.totalInboxCount / this.perPage);
-            
-            this.renderEmails(this.emails, this.inboxList, false);
+            this.totalPages = Math.max(1, Math.ceil(this.totalInboxCount / this.perPage));
+
+            // The emails on the last page were archived since it was opened:
+            // move back to the new last page instead of showing a blank one.
+            if (this.emails.length === 0 && this.currentPage > this.totalPages) {
+                this.currentPage = this.totalPages;
+                return this.loadEmails();
+            }
+
+            if (this.emails.length === 0) {
+                this.showEmpty(this.inboxList, 'Inbox zero! There are no emails left in your inbox.');
+            } else {
+                this.renderEmails(this.emails, this.inboxList, false);
+            }
             this.updateTitles();
             this.updatePaginationInfo();
         } catch (error) {
@@ -609,7 +620,7 @@ class MailboxZero {
 
     updatePaginationInfo() {
         const start = this.emails.length > 0 ? ((this.currentPage - 1) * this.perPage) + 1 : 0;
-        const end = Math.min(start + this.emails.length - 1, this.totalInboxCount);
+        const end = this.emails.length > 0 ? Math.min(start + this.emails.length - 1, this.totalInboxCount) : 0;
         
         this.showingStart.textContent = start;
         this.showingEnd.textContent = end;
