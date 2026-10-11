@@ -1372,3 +1372,54 @@ func TestHandler_RejectsForeignRequests(t *testing.T) {
 		})
 	}
 }
+
+// failingGetEmailJMAPClient fails every single-email fetch.
+type failingGetEmailJMAPClient struct {
+	jmap.JMAPClient
+}
+
+func (c *failingGetEmailJMAPClient) GetEmail(emailID string) (*jmap.Email, error) {
+	return nil, errors.New("jmap unavailable")
+}
+
+func TestHandleGetEmail(t *testing.T) {
+	server := setupTestServer(t)
+	failing := &Server{
+		config:     &config.Config{},
+		jmapClient: &failingGetEmailJMAPClient{JMAPClient: jmap.NewMockClient()},
+	}
+
+	tests := []struct {
+		name   string
+		server *Server
+		path   string
+		want   int
+	}{
+		{name: "existing email", server: server, path: "/api/emails/email-0-0", want: http.StatusOK},
+		{name: "unknown email", server: server, path: "/api/emails/no-such-email", want: http.StatusNotFound},
+		{name: "JMAP failure", server: failing, path: "/api/emails/email-0-0", want: http.StatusInternalServerError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Host = "localhost:8080"
+			w := httptest.NewRecorder()
+			tt.server.Handler().ServeHTTP(w, req)
+
+			if w.Code != tt.want {
+				t.Fatalf("status = %d, want %d (body %q)", w.Code, tt.want, strings.TrimSpace(w.Body.String()))
+			}
+			if tt.want != http.StatusOK {
+				return
+			}
+			var email jmap.Email
+			if err := json.NewDecoder(w.Body).Decode(&email); err != nil {
+				t.Fatalf("failed to decode email: %v", err)
+			}
+			if email.ID != "email-0-0" || len(email.BodyValues) == 0 {
+				t.Errorf("email = %+v, want email-0-0 with its body", email)
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package jmap
 
 import (
+	"errors"
 	"sync"
 	"testing"
 )
@@ -531,5 +532,39 @@ func TestMockClient_ConcurrentAccess(t *testing.T) {
 	}
 	if info.TotalCount != len(emails) {
 		t.Errorf("inbox count after concurrent archive/unarchive = %d, want %d", info.TotalCount, len(emails))
+	}
+}
+
+// TestMockClient_BodiesOnlyFromGetEmail checks that the mock behaves like the
+// real client: listings carry no bodies, GetEmail does.
+func TestMockClient_BodiesOnlyFromGetEmail(t *testing.T) {
+	client := NewMockClient()
+
+	emails, err := client.GetInboxEmails(100)
+	if err != nil {
+		t.Fatalf("GetInboxEmails() unexpected error = %v", err)
+	}
+	info, err := client.GetInboxEmailsWithCountPaginated(100, 0)
+	if err != nil {
+		t.Fatalf("GetInboxEmailsWithCountPaginated() unexpected error = %v", err)
+	}
+	for _, list := range [][]Email{emails, info.Emails} {
+		for _, email := range list {
+			if email.BodyValues != nil || email.TextBody != nil || email.HTMLBody != nil {
+				t.Fatalf("listing returned email %s with a body", email.ID)
+			}
+		}
+	}
+
+	full, err := client.GetEmail(emails[0].ID)
+	if err != nil {
+		t.Fatalf("GetEmail() unexpected error = %v", err)
+	}
+	if full.ID != emails[0].ID || len(full.BodyValues) == 0 {
+		t.Errorf("GetEmail(%s) = %+v, want the email with its body", emails[0].ID, full)
+	}
+
+	if _, err := client.GetEmail("no-such-email"); !errors.Is(err, ErrEmailNotFound) {
+		t.Errorf("GetEmail(no-such-email) error = %v, want ErrEmailNotFound", err)
 	}
 }

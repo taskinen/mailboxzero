@@ -2,6 +2,7 @@ package jmap
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 )
@@ -832,5 +833,97 @@ func TestClient_MoveEmails_ReportsRejectedEmails(t *testing.T) {
 				t.Errorf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestClient_InboxListing_LeavesOutBodies checks that inbox listings ask only
+// for summaries. Bodies can be 50 KB each and are fetched per email with
+// GetEmail when the UI previews it.
+func TestClient_InboxListing_LeavesOutBodies(t *testing.T) {
+	fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Mailbox/get": mailboxGet(testInbox),
+		"Email/query": func(map[string]interface{}) map[string]interface{} {
+			return map[string]interface{}{"accountId": "acc", "ids": []string{"e1"}}
+		},
+		"Email/get": func(map[string]interface{}) map[string]interface{} {
+			return map[string]interface{}{"accountId": "acc", "list": []interface{}{
+				map[string]interface{}{"id": "e1", "subject": "First", "preview": "Hello"},
+			}}
+		},
+	})
+
+	if _, err := c.GetInboxEmails(10); err != nil {
+		t.Fatalf("GetInboxEmails() unexpected error = %v", err)
+	}
+
+	gets := fake.callArgs("Email/get")
+	if len(gets) != 1 {
+		t.Fatalf("got %d Email/get calls, want 1", len(gets))
+	}
+	properties, _ := gets[0]["properties"].([]interface{})
+	requested := map[interface{}]bool{}
+	for _, p := range properties {
+		requested[p] = true
+	}
+	if !requested["preview"] {
+		t.Errorf("listing properties %v do not include preview", properties)
+	}
+	for _, body := range []string{"bodyValues", "textBody", "htmlBody"} {
+		if requested[body] {
+			t.Errorf("listing requests the %s property", body)
+		}
+	}
+	for _, option := range []string{"fetchTextBodyValues", "fetchHTMLBodyValues", "maxBodyValueBytes", "bodyProperties"} {
+		if _, ok := gets[0][option]; ok {
+			t.Errorf("listing sets the %s option", option)
+		}
+	}
+}
+
+func TestClient_GetEmail(t *testing.T) {
+	fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Email/get": func(args map[string]interface{}) map[string]interface{} {
+			ids, _ := args["ids"].([]interface{})
+			list := []interface{}{}
+			notFound := []interface{}{}
+			for _, id := range ids {
+				if id != "e1" {
+					notFound = append(notFound, id)
+					continue
+				}
+				list = append(list, map[string]interface{}{
+					"id":         "e1",
+					"subject":    "First",
+					"preview":    "Hello",
+					"textBody":   []interface{}{map[string]interface{}{"partId": "1", "type": "text/plain"}},
+					"bodyValues": map[string]interface{}{"1": map[string]interface{}{"value": "Hello, this is the full body."}},
+				})
+			}
+			return map[string]interface{}{"accountId": "acc", "list": list, "notFound": notFound}
+		},
+	})
+
+	email, err := c.GetEmail("e1")
+	if err != nil {
+		t.Fatalf("GetEmail() unexpected error = %v", err)
+	}
+	if email.ID != "e1" || email.BodyValues["1"].Value != "Hello, this is the full body." {
+		t.Errorf("GetEmail() = %+v, want e1 with its body", email)
+	}
+	if len(email.TextBody) != 1 || email.TextBody[0].PartID != "1" {
+		t.Errorf("GetEmail() TextBody = %+v, want part 1", email.TextBody)
+	}
+
+	args := fake.callArgs("Email/get")[0]
+	ids, _ := json.Marshal(args["ids"])
+	if string(ids) != `["e1"]` {
+		t.Errorf("Email/get ids = %s, want [\"e1\"]", ids)
+	}
+	if args["fetchTextBodyValues"] != true || args["fetchHTMLBodyValues"] != true {
+		t.Errorf("Email/get does not fetch body values: %v", args)
+	}
+
+	if _, err := c.GetEmail("missing"); !errors.Is(err, ErrEmailNotFound) {
+		t.Errorf("GetEmail(missing) error = %v, want ErrEmailNotFound", err)
 	}
 }

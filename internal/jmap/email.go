@@ -1,6 +1,7 @@
 package jmap
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -185,8 +186,15 @@ func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 	return c.queryMailboxEmails(accountID, inbox.ID, limit, offset)
 }
 
+// emailSummaryProperties are the Email properties of inbox listings. Bodies
+// are left out: they can be 50 KB each, matching only needs the preview, and
+// the UI fetches a body with GetEmail when it previews an email.
+var emailSummaryProperties = []string{
+	"id", "subject", "from", "to", "receivedAt", "preview", "hasAttachment", "mailboxIds", "keywords",
+}
+
 // queryMailboxEmails fetches one page of a mailbox's emails, newest first and
-// with their bodies, in a single Email/query + Email/get request.
+// without bodies, in a single Email/query + Email/get request.
 func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset int) ([]Email, error) {
 	queryParams := map[string]interface{}{
 		"accountId": accountID,
@@ -206,16 +214,9 @@ func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset i
 	methodCalls := []MethodCall{
 		{"Email/query", queryParams, "0"},
 		{"Email/get", map[string]interface{}{
-			"accountId": accountID,
-			"#ids":      map[string]interface{}{"resultOf": "0", "name": "Email/query", "path": "/ids"},
-			"properties": []string{
-				"id", "subject", "from", "to", "receivedAt", "preview", "hasAttachment", "mailboxIds", "keywords",
-				"bodyValues", "textBody", "htmlBody",
-			},
-			"bodyProperties":      []string{"value", "isEncodingProblem", "isTruncated"},
-			"fetchTextBodyValues": true,
-			"fetchHTMLBodyValues": true,
-			"maxBodyValueBytes":   50000,
+			"accountId":  accountID,
+			"#ids":       map[string]interface{}{"resultOf": "0", "name": "Email/query", "path": "/ids"},
+			"properties": emailSummaryProperties,
 		}, "1"},
 	}
 
@@ -251,6 +252,56 @@ func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset i
 	}
 
 	return emails, nil
+}
+
+// ErrEmailNotFound is returned by GetEmail when the account has no email with
+// the requested id.
+var ErrEmailNotFound = errors.New("email not found")
+
+// GetEmail fetches one email with its text and HTML bodies. Inbox listings
+// leave the bodies out, so the UI fetches them here when it previews an email.
+func (c *Client) GetEmail(emailID string) (*Email, error) {
+	accountID := c.GetPrimaryAccount()
+	if accountID == "" {
+		return nil, fmt.Errorf("no primary account found")
+	}
+
+	properties := append(append([]string{}, emailSummaryProperties...), "bodyValues", "textBody", "htmlBody")
+	methodCalls := []MethodCall{
+		{"Email/get", map[string]interface{}{
+			"accountId":  accountID,
+			"ids":        []string{emailID},
+			"properties": properties,
+			// bodyProperties is left out, so the textBody and htmlBody parts
+			// come with the server's default fields, including partId and
+			// type, which link them to their bodyValues.
+			"fetchTextBodyValues": true,
+			"fetchHTMLBodyValues": true,
+			"maxBodyValueBytes":   50000,
+		}, "0"},
+	}
+
+	resp, err := c.makeRequest(methodCalls)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get email: %w", err)
+	}
+
+	if len(resp.MethodResponses) == 0 || len(resp.MethodResponses[0]) < 2 {
+		return nil, fmt.Errorf("invalid email get response format")
+	}
+	name, _ := resp.MethodResponses[0][0].(string)
+	responseData, _ := resp.MethodResponses[0][1].(map[string]interface{})
+	if name == "error" {
+		return nil, fmt.Errorf("server rejected Email/get: %s", describeJMAPError(responseData))
+	}
+
+	list, _ := responseData["list"].([]interface{})
+	if len(list) == 0 {
+		return nil, ErrEmailNotFound
+	}
+	emailData, _ := list[0].(map[string]interface{})
+	email := parseEmail(emailData)
+	return &email, nil
 }
 
 type InboxInfo struct {

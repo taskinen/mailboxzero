@@ -83,7 +83,7 @@ mailboxzero/
   - `JMAPClient` interface implemented by both the real `Client` and the in-memory `MockClient` (selected via `mock_mode` in config)
   - Session authentication with Bearer tokens
   - Mailbox discovery (inbox, archive)
-  - Email querying and retrieval with body content, including a paginated `GetInboxEmailsWithCountPaginated` used by the `/api/emails` endpoint
+  - Email querying without bodies (summaries with JMAP's `preview`, `emailSummaryProperties`), including a paginated `GetInboxEmailsWithCountPaginated` used by the `/api/emails` endpoint; `GetEmail` fetches one email with its text and HTML bodies on demand for the hover preview, returning `ErrEmailNotFound` for an unknown id
   - Safe archive operations: archive and unarchive send an Email/set patch that changes only the inbox and archive memberships (`mailboxIds/<id>`), so any other mailbox or label the email is in is kept
   - Comprehensive error handling
 
@@ -93,7 +93,7 @@ mailboxzero/
 - **Algorithm:**
   - **Sender Similarity (50% weight):** Structured ladder, not Levenshtein. Same full address → 1.0; same domain → 0.8 (suppressed for shared-ESP domains like `sendgrid.net` unless local parts also match); same registrable root domain (e.g. `mail.google.com` ↔ `accounts.google.com`) → 0.7; same non-generic display name → 0.6.
   - **Subject Similarity (30% weight):** `max(tokenJaccard, levenshtein)` over a normalized subject that has reply/forward prefixes (`Re:`, `Fwd:`, `[list]`) stripped. Token Jaccard filters a small stop-word set (`weekly`, `newsletter`, `update`, etc.) and requires both sides to have ≥2 surviving tokens before being credited; otherwise the score falls back to Levenshtein alone.
-  - **Body Similarity (20% weight):** Jaccard similarity over normalized word tokens (length ≥ 3) extracted from preview/body.
+  - **Body Similarity (20% weight):** Jaccard similarity over normalized word tokens (length ≥ 3) extracted from JMAP's `preview` text (listings no longer fetch bodies; a body is only used if a preview is missing).
 - **Features:**
   - Per-email features (`senderAddr`, `senderDomain`, `senderRoot`, `senderName`, `subjectNorm`, `subjectTokens`, `bodyTokens`) precomputed once per call so the inner pairwise compare avoids re-parsing senders or re-tokenizing strings
   - Threshold-aware short-circuit: cheap-first ordering (sender → subject → body) bails out as soon as the partial score plus the maximum remaining contribution falls below `threshold`
@@ -108,6 +108,7 @@ mailboxzero/
 - **Endpoints:**
   - `GET /` - Main application interface
   - `GET /api/emails` - Fetch inbox emails
+  - `GET /api/emails/{id}` - Fetch one email with its bodies (hover preview)
   - `POST /api/similar` - Find similar emails with threshold
   - `POST /api/archive` - Archive selected emails
   - `POST /api/unarchive` - Move previously archived emails back to the inbox (powers the Undo button)
@@ -188,7 +189,11 @@ default_similarity: 60          # Default similarity percentage (0-100)
 - **Purpose:** Retrieve inbox emails (paginated)
 - **Query Parameters:** `limit` (default 100, capped at 500, the largest page size the UI offers) and `offset` (default 0)
 - **Response:** JSON object `{ "emails": [...], "totalCount": N }` (`InboxInfo`)
-- **Email Fields:** ID, subject, from, preview, receivedAt, bodyValues
+- **Email Fields:** ID, subject, from, preview, receivedAt (no bodies: `bodyValues` is `null`; see `GET /api/emails/{id}`)
+
+### GET /api/emails/{id}
+- **Purpose:** Fetch one email with its text and HTML bodies, for the hover preview. Listings and `/api/similar` leave bodies out, and `app.js` (`loadPreviewBody()`) fetches them here the first time an email is previewed
+- **Response:** JSON email object including `bodyValues`, `textBody` and `htmlBody`; 404 if there is no such email
 
 ### POST /api/similar
 - **Purpose:** Find similar emails

@@ -143,7 +143,7 @@ The application uses weighted scoring tuned for newsletter and notification clus
 
 - **Sender Similarity (50%)** — Structured ladder, not raw string distance. Same full address → 1.0; same domain → 0.8 (suppressed for shared-ESP domains like `sendgrid.net` unless local parts also match); same registrable root domain (e.g. `mail.google.com` ↔ `accounts.google.com`) → 0.7; same specific display name → 0.6.
 - **Subject Similarity (30%)** — `max(token Jaccard, Levenshtein)` over a normalized subject with reply/forward prefixes (`Re:`, `Fwd:`, `[list]`) stripped. Common newsletter stop words (`weekly`, `newsletter`, `update`, etc.) are filtered before Jaccard.
-- **Content Similarity (20%)** — Jaccard overlap of normalized word tokens (length ≥ 3) from preview/body.
+- **Content Similarity (20%)** — Jaccard overlap of normalized word tokens (length ≥ 3) from the email's preview text. Full bodies are not downloaded for matching; the app fetches an email's body only when you hover over it to preview it.
 
 Clusters are formed by single-link expansion: an email joins a group if it matches **any** existing member at the threshold, not just the seed — so a sibling that diverges from the group's first email but matches another member still gets pulled in.
 

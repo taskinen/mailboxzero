@@ -88,6 +88,11 @@ func (m *MockClient) inboxEmails() []Email {
 	var inbox []Email
 	for _, email := range m.sampleEmails {
 		if !m.archivedIDs[email.ID] {
+			// Like the real client, listings leave the bodies out; GetEmail
+			// returns them.
+			email.BodyValues = nil
+			email.TextBody = nil
+			email.HTMLBody = nil
 			inbox = append(inbox, email)
 		}
 	}
@@ -132,6 +137,17 @@ func (m *MockClient) UnarchiveEmails(emailIDs []string, dryRun bool) error {
 		delete(m.archivedIDs, id)
 	}
 	return nil
+}
+
+// GetEmail returns one sample email with its body, archived or not, like the
+// real server.
+func (m *MockClient) GetEmail(emailID string) (*Email, error) {
+	for _, email := range m.sampleEmails {
+		if email.ID == emailID {
+			return &email, nil
+		}
+	}
+	return nil, ErrEmailNotFound
 }
 
 // generateSampleEmails creates realistic sample email data
