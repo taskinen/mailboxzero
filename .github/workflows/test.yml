@@ -97,3 +97,41 @@ jobs:
         else
           echo "All tests passed"
         fi
+
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.26.x'
+        cache: true
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 'lts/*'
+        cache: npm
+        cache-dependency-path: e2e/package-lock.json
+
+    - name: Install e2e dependencies
+      working-directory: e2e
+      run: npm ci
+
+    # Playwright drives the Google Chrome preinstalled on the runner
+    # (channel: 'chrome' in playwright.config.js), so no browser download.
+    - name: Run end-to-end tests
+      working-directory: e2e
+      run: npx playwright test
+
+    - name: Upload Playwright report
+      uses: actions/upload-artifact@v7
+      if: failure()
+      with:
+        name: playwright-report
+        path: e2e/playwright-report

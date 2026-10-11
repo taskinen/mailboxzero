@@ -33,7 +33,12 @@ mailboxzero/
 ├── CLAUDE.md                   # Development documentation (this file)
 ├── .github/
 │   └── workflows/
-│       └── test.yml            # CI: gofmt check and `go test -race -coverprofile`
+│       └── test.yml            # CI: gofmt check, `go test -race -coverprofile`, Playwright e2e tests
+├── e2e/                        # Playwright end-to-end tests, run against the server in mock mode
+│   ├── package.json            # @playwright/test dev dependency (plus package-lock.json)
+│   ├── playwright.config.js    # Starts the server with config-e2e.yaml and drives the installed Chrome
+│   ├── config-e2e.yaml         # Mock mode with dry_run: false on port 18080
+│   └── tests/                  # *.spec.js browser tests
 ├── internal/
 │   ├── config/
 │   │   ├── config.go           # Configuration loading and validation
@@ -141,7 +146,7 @@ mailboxzero/
 5. **Archive Operations:** Bulk archive with JMAP email movement
 6. **Rapid Archive Loop:** "Archive & Find Next" button archives the selected similar emails without confirmation and immediately re-runs the same similarity search (uses `archiveAndFindNext()` in `app.js`)
 7. **Clear Results:** Reset functionality for multiple searches
-8. **Individual Email Targeting:** Select specific email to find matches
+8. **Individual Email Targeting:** Select specific email to find matches. The selection is cleared once that email is archived (`clearArchivedSelection()` in `app.js`), so the next Find Similar searches the whole inbox
 
 ### ✅ User Experience
 1. **Responsive Design:** Mobile and desktop optimized
@@ -295,6 +300,9 @@ go tool cover -html=coverage.out
 
 # Run benchmarks
 go test ./... -bench=.
+
+# Run the end-to-end browser tests (requires Node.js and Google Chrome)
+cd e2e && npm ci && npx playwright test
 
 # Lint the code (requires golangci-lint)
 golangci-lint run

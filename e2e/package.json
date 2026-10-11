@@ -1,0 +1,11 @@
+{
+  "name": "mailboxzero-e2e",
+  "private": true,
+  "description": "End-to-end browser tests for Mailbox Zero, run against the server in mock mode",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
+  }
+}
