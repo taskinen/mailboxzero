@@ -117,7 +117,7 @@ mailboxzero/
   - JSON API responses
   - Error handling and logging
   - Static file serving
-  - `Handler()` builds the router (testable end to end); `Start()` serves it through `newHTTPServer`, which sets timeouts: 10 s to read headers, 30 s to read the request, 2 min to write the response (Find Similar and archive can make two 30 s JMAP calls), 2 min idle
+  - `Handler()` builds the router behind the request checks described under Security Considerations (testable end to end); `Start()` serves it through `newHTTPServer`, which sets timeouts: 10 s to read headers, 30 s to read the request, 2 min to write the response (Find Similar and archive can make two 30 s JMAP calls), 2 min idle
   - Inbox cache for `/api/similar`: the 1000-email JMAP fetch is cached in-process for 60 seconds (`inboxCacheTTL`) and invalidated by `handleArchive`/`handleUnarchive`, even when they fail (JMAP can reject some emails while moving the rest), so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP
 
 #### 5. Frontend Interface (`web/`)
@@ -176,6 +176,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
 
 ### Security Considerations
 - **Localhost Only:** The web UI has no login, so `validate()` in `internal/config/config.go` rejects any `server.host` that `IsLoopbackHost` does not accept (`localhost`, 127.0.0.0/8, `::1`), including empty and `0.0.0.0`. The app deliberately provides no authentication or HTTPS; remote use goes through an SSH tunnel
+- **Browser Protections:** `Handler()` wraps the router in `localhostOnly` (403 unless the `Host` header is a loopback name, which stops DNS rebinding) and Go's `http.CrossOriginProtection` (403 for cross-origin `POST`s via `Sec-Fetch-Site`/`Origin`, which stops cross-site request forgery). `e2e/tests/cross-site.spec.js` checks the latter in a real browser
 - **API Tokens:** Use Fastmail API tokens for secure authentication
 - **Local Processing:** All similarity calculations happen locally
 - **Minimal Permissions:** Only requires read access to inbox and write to archive

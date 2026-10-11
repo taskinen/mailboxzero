@@ -1305,3 +1305,70 @@ func TestNewHTTPServer_Timeouts(t *testing.T) {
 		}
 	}
 }
+
+// TestHandler_RejectsForeignRequests checks the request checks in Handler():
+// only loopback Host headers are served (against DNS rebinding), and
+// cross-origin POSTs are refused (against cross-site request forgery).
+func TestHandler_RejectsForeignRequests(t *testing.T) {
+	server := setupTestServer(t)
+	handler := server.Handler()
+
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		host    string
+		headers map[string]string
+		want    int
+	}{
+		{name: "localhost", method: "GET", path: "/api/emails", host: "localhost:8080", want: http.StatusOK},
+		{name: "localhost without port", method: "GET", path: "/api/emails", host: "localhost", want: http.StatusOK},
+		{name: "IPv4 loopback", method: "GET", path: "/api/emails", host: "127.0.0.1:8080", want: http.StatusOK},
+		{name: "IPv6 loopback", method: "GET", path: "/api/emails", host: "[::1]:8080", want: http.StatusOK},
+		{name: "IPv6 loopback without port", method: "GET", path: "/api/emails", host: "[::1]", want: http.StatusOK},
+		{name: "rebound domain", method: "GET", path: "/api/emails", host: "evil.example:8080", want: http.StatusForbidden},
+		{name: "LAN address", method: "GET", path: "/api/emails", host: "192.168.1.5:8080", want: http.StatusForbidden},
+		{name: "rebound domain POST", method: "POST", path: "/api/clear", host: "evil.example:8080", want: http.StatusForbidden},
+		{
+			name: "cross-site POST", method: "POST", path: "/api/clear", host: "localhost:8080",
+			headers: map[string]string{"Sec-Fetch-Site": "cross-site"}, want: http.StatusForbidden,
+		},
+		{
+			name: "same-site POST from another port", method: "POST", path: "/api/clear", host: "localhost:8080",
+			headers: map[string]string{"Sec-Fetch-Site": "same-site"}, want: http.StatusForbidden,
+		},
+		{
+			name: "foreign Origin without Sec-Fetch-Site", method: "POST", path: "/api/clear", host: "localhost:8080",
+			headers: map[string]string{"Origin": "http://evil.example"}, want: http.StatusForbidden,
+		},
+		{
+			name: "same-origin POST", method: "POST", path: "/api/clear", host: "localhost:8080",
+			headers: map[string]string{"Sec-Fetch-Site": "same-origin"}, want: http.StatusOK,
+		},
+		{
+			name: "matching Origin", method: "POST", path: "/api/clear", host: "localhost:8080",
+			headers: map[string]string{"Origin": "http://localhost:8080"}, want: http.StatusOK,
+		},
+		{name: "non-browser POST", method: "POST", path: "/api/clear", host: "localhost:8080", want: http.StatusOK},
+		{
+			name: "cross-site GET", method: "GET", path: "/api/emails", host: "localhost:8080",
+			headers: map[string]string{"Sec-Fetch-Site": "cross-site"}, want: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req.Host = tt.host
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.want {
+				t.Errorf("status = %d, want %d (body %q)", w.Code, tt.want, strings.TrimSpace(w.Body.String()))
+			}
+		})
+	}
+}

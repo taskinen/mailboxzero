@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -72,6 +74,14 @@ func (s *Server) Start() error {
 }
 
 // Handler returns the HTTP handler that serves the UI, static files and API.
+//
+// Listening on localhost only keeps other machines out, but every website
+// open in the user's browser can still send requests here. Two checks run
+// before the router:
+//   - localhostOnly refuses requests addressed to any other host name, which
+//     stops DNS rebinding (a foreign domain re-pointed at 127.0.0.1).
+//   - CrossOriginProtection refuses cross-origin POSTs, so another site cannot
+//     make the browser archive or unarchive emails.
 func (s *Server) Handler() http.Handler {
 	r := mux.NewRouter()
 
@@ -84,7 +94,25 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/api/unarchive", s.handleUnarchive).Methods("POST")
 	r.HandleFunc("/api/clear", s.handleClear).Methods("POST")
 
-	return r
+	return localhostOnly(http.NewCrossOriginProtection().Handler(r))
+}
+
+// localhostOnly serves only requests whose Host header names this machine.
+// The server listens on loopback only, so any other Host means a browser
+// reached it through a rebound DNS name.
+func localhostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			// No port: the Host is a bare name or a bracketed IPv6 address.
+			host = strings.TrimSuffix(strings.TrimPrefix(r.Host, "["), "]")
+		}
+		if !config.IsLoopbackHost(host) {
+			http.Error(w, "Forbidden: requests must be addressed to localhost", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // newHTTPServer returns the http.Server for addr and h, with timeouts set.
