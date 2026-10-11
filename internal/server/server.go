@@ -32,9 +32,6 @@ type Server struct {
 type PageData struct {
 	DryRun            bool
 	DefaultSimilarity int
-	Emails            []jmap.Email
-	GroupedEmails     []jmap.Email
-	SelectedEmailID   string
 }
 
 func New(cfg *config.Config, jmapClient jmap.JMAPClient) (*Server, error) {
