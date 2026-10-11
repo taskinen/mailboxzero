@@ -24,6 +24,17 @@ const inboxCacheTTL = 60 * time.Second
 // request fetch (and the server hold) an unbounded number of emails.
 const maxEmailsPageSize = 500
 
+// HTTP server timeouts, so slow or stalled clients cannot hold connections
+// open indefinitely. Find Similar and archive each make up to two JMAP calls
+// with a 30-second client timeout, plus clustering of up to 1000 emails, so
+// the write timeout leaves room for that.
+const (
+	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second
+	writeTimeout      = 2 * time.Minute
+	idleTimeout       = 2 * time.Minute
+)
+
 type Server struct {
 	config     *config.Config
 	jmapClient jmap.JMAPClient
@@ -53,6 +64,15 @@ func New(cfg *config.Config, jmapClient jmap.JMAPClient) (*Server, error) {
 }
 
 func (s *Server) Start() error {
+	addr := s.config.GetServerAddr()
+	log.Printf("Server starting on http://%s", addr)
+	log.Printf("DRY RUN MODE: %v", s.config.DryRun)
+
+	return newHTTPServer(addr, s.Handler()).ListenAndServe()
+}
+
+// Handler returns the HTTP handler that serves the UI, static files and API.
+func (s *Server) Handler() http.Handler {
 	r := mux.NewRouter()
 
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
@@ -64,11 +84,19 @@ func (s *Server) Start() error {
 	r.HandleFunc("/api/unarchive", s.handleUnarchive).Methods("POST")
 	r.HandleFunc("/api/clear", s.handleClear).Methods("POST")
 
-	addr := s.config.GetServerAddr()
-	log.Printf("Server starting on http://%s", addr)
-	log.Printf("DRY RUN MODE: %v", s.config.DryRun)
+	return r
+}
 
-	return http.ListenAndServe(addr, r)
+// newHTTPServer returns the http.Server for addr and h, with timeouts set.
+func newHTTPServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

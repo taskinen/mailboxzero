@@ -1240,3 +1240,68 @@ func TestHandleMove_FailureInvalidatesInboxCache(t *testing.T) {
 		})
 	}
 }
+
+// TestHandler_Routes sends real HTTP requests through Handler(), the same
+// handler Start() serves, to check routing and method matching end to end.
+func TestHandler_Routes(t *testing.T) {
+	server := setupTestServer(t)
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+
+	tests := []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{method: "GET", path: "/", want: http.StatusOK},
+		{method: "GET", path: "/api/emails", want: http.StatusOK},
+		{method: "POST", path: "/api/clear", want: http.StatusOK},
+		{method: "GET", path: "/api/clear", want: http.StatusMethodNotAllowed},
+		{method: "GET", path: "/no-such-page", want: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, ts.URL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("failed to build request: %v", err)
+			}
+			resp, err := ts.Client().Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != tt.want {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewHTTPServer_Timeouts(t *testing.T) {
+	handler := http.NewServeMux()
+	srv := newHTTPServer("localhost:8080", handler)
+
+	if srv.Addr != "localhost:8080" {
+		t.Errorf("Addr = %q, want localhost:8080", srv.Addr)
+	}
+	if srv.Handler != handler {
+		t.Error("Handler is not the handler passed in")
+	}
+
+	timeouts := []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{name: "ReadHeaderTimeout", got: srv.ReadHeaderTimeout, want: readHeaderTimeout},
+		{name: "ReadTimeout", got: srv.ReadTimeout, want: readTimeout},
+		{name: "WriteTimeout", got: srv.WriteTimeout, want: writeTimeout},
+		{name: "IdleTimeout", got: srv.IdleTimeout, want: idleTimeout},
+	}
+	for _, tt := range timeouts {
+		if tt.got <= 0 || tt.got != tt.want {
+			t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+		}
+	}
+}
