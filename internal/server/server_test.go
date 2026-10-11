@@ -286,6 +286,96 @@ func TestHandleFindSimilar(t *testing.T) {
 	}
 }
 
+// fixedInboxJMAPClient serves a fixed inbox. A nil emails slice mirrors the
+// real JMAP client, which returns nil rather than an empty slice when the
+// inbox has no emails.
+type fixedInboxJMAPClient struct {
+	jmap.JMAPClient
+	emails []jmap.Email
+}
+
+func (c *fixedInboxJMAPClient) GetInboxEmails(limit int) ([]jmap.Email, error) {
+	return c.emails, nil
+}
+
+func (c *fixedInboxJMAPClient) GetInboxEmailsWithCountPaginated(limit, offset int) (*jmap.InboxInfo, error) {
+	return &jmap.InboxInfo{Emails: c.emails, TotalCount: len(c.emails)}, nil
+}
+
+func TestHandleGetEmails_EmptyInboxIsEmptyArray(t *testing.T) {
+	server := &Server{
+		config:     &config.Config{},
+		jmapClient: &fixedInboxJMAPClient{JMAPClient: jmap.NewMockClient()},
+	}
+
+	req := httptest.NewRequest("GET", "/api/emails", nil)
+	w := httptest.NewRecorder()
+	server.handleGetEmails(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleGetEmails() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var response map[string]json.RawMessage
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("handleGetEmails() failed to decode response: %v", err)
+	}
+	if got := string(response["emails"]); got != "[]" {
+		t.Errorf("handleGetEmails() emails = %s, want []", got)
+	}
+}
+
+func TestHandleFindSimilar_NoMatchesIsEmptyArray(t *testing.T) {
+	tests := []struct {
+		name   string
+		emails []jmap.Email
+	}{
+		{
+			name:   "empty inbox",
+			emails: nil,
+		},
+		{
+			name: "no similar emails",
+			emails: []jmap.Email{
+				{
+					ID:      "tax",
+					Subject: "Quarterly tax filing reminder",
+					From:    []jmap.EmailAddress{{Name: "Tax Office", Email: "filing@tax.example"}},
+					Preview: "Your filing is due next month.",
+				},
+				{
+					ID:      "photos",
+					Subject: "Photos from the lake trip",
+					From:    []jmap.EmailAddress{{Name: "Alex", Email: "alex@friends.example"}},
+					Preview: "Here are the pictures I promised.",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := &Server{
+				config:     &config.Config{},
+				jmapClient: &fixedInboxJMAPClient{JMAPClient: jmap.NewMockClient(), emails: tt.emails},
+			}
+
+			body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 60.0})
+			req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			server.handleFindSimilar(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("handleFindSimilar() status = %v, want %v", w.Code, http.StatusOK)
+			}
+			if got := strings.TrimSpace(w.Body.String()); got != "[]" {
+				t.Errorf("handleFindSimilar() body = %s, want []", got)
+			}
+		})
+	}
+}
+
 func TestHandleArchive(t *testing.T) {
 	server := setupTestServer(t)
 

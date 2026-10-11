@@ -194,7 +194,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
     "emailId": "optional-specific-email-id"
   }
   ```
-- **Response:** JSON array of matching email objects
+- **Response:** JSON array of matching email objects; an empty array `[]` (never `null`) when nothing matches
 
 ### POST /api/archive
 - **Purpose:** Archive selected emails
