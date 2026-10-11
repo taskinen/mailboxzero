@@ -19,6 +19,11 @@ import (
 
 const inboxCacheTTL = 60 * time.Second
 
+// maxEmailsPageSize caps the limit parameter of /api/emails. It matches the
+// largest page size the UI offers; anything bigger only makes one JMAP
+// request fetch (and the server hold) an unbounded number of emails.
+const maxEmailsPageSize = 500
+
 type Server struct {
 	config     *config.Config
 	jmapClient jmap.JMAPClient
@@ -87,7 +92,7 @@ func (s *Server) handleGetEmails(w http.ResponseWriter, r *http.Request) {
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-			limit = l
+			limit = min(l, maxEmailsPageSize)
 		}
 	}
 

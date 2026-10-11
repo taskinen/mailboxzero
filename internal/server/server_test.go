@@ -716,6 +716,49 @@ func TestHandleGetEmails_ParseErrors(t *testing.T) {
 	}
 }
 
+// limitRecordingJMAPClient records the page size handleGetEmails asks for.
+type limitRecordingJMAPClient struct {
+	jmap.JMAPClient
+	gotLimit int
+}
+
+func (c *limitRecordingJMAPClient) GetInboxEmailsWithCountPaginated(limit, offset int) (*jmap.InboxInfo, error) {
+	c.gotLimit = limit
+	return &jmap.InboxInfo{Emails: []jmap.Email{}}, nil
+}
+
+func TestHandleGetEmails_LimitIsCapped(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     string
+		wantLimit int
+	}{
+		{name: "default", query: "", wantLimit: 100},
+		{name: "small page", query: "?limit=50", wantLimit: 50},
+		{name: "largest UI page", query: "?limit=500", wantLimit: 500},
+		{name: "just over the cap", query: "?limit=501", wantLimit: 500},
+		{name: "huge", query: "?limit=100000", wantLimit: 500},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &limitRecordingJMAPClient{JMAPClient: jmap.NewMockClient()}
+			server := &Server{config: &config.Config{}, jmapClient: client}
+
+			req := httptest.NewRequest("GET", "/api/emails"+tt.query, nil)
+			w := httptest.NewRecorder()
+			server.handleGetEmails(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("handleGetEmails() status = %v, want %v", w.Code, http.StatusOK)
+			}
+			if client.gotLimit != tt.wantLimit {
+				t.Errorf("handleGetEmails() requested limit %d, want %d", client.gotLimit, tt.wantLimit)
+			}
+		})
+	}
+}
+
 func TestHandleIndex_WithPageData(t *testing.T) {
 	server := setupTestServer(t)
 
