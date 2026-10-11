@@ -3,7 +3,7 @@
 
 server:
   port: 8080
-  host: "localhost"
+  host: "localhost"  # Must be localhost, 127.0.0.1 or ::1: the web UI has no login
 
 # JMAP settings are not required in mock mode
 jmap:

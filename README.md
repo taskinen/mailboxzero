@@ -126,7 +126,7 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 ```yaml
 server:
   port: 8080              # Web server port
-  host: "localhost"       # Web server host
+  host: "localhost"       # Web server host: localhost, 127.0.0.1 or ::1 only
 
 jmap:
   endpoint: "https://api.fastmail.com/jmap/session"
@@ -149,6 +149,7 @@ Clusters are formed by single-link expansion: an email joins a group if it match
 
 ## Security Considerations
 
+- **Localhost Only**: The web UI has no login, so the server only listens on this machine. `server.host` must be `localhost`, `127.0.0.1` or `::1`; anything else (including `0.0.0.0`) is rejected at startup. To use it from another machine, forward the port over SSH (`ssh -L 8080:localhost:8080 your-server`) and open http://localhost:8080 locally
 - **API Tokens**: Use Fastmail API tokens for secure authentication
 - **Local Only**: All processing happens locally - no data sent to external servers
 - **Read-Heavy**: Only reads email data, minimal write operations

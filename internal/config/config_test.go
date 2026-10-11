@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,6 +42,31 @@ default_similarity: 75
 mock_mode: true
 `,
 			wantErr: false,
+		},
+		{
+			name: "IPv6 loopback host",
+			configYAML: `
+server:
+  port: 8080
+  host: "::1"
+dry_run: true
+default_similarity: 75
+mock_mode: true
+`,
+			wantErr: false,
+		},
+		{
+			name: "host binding all interfaces",
+			configYAML: `
+server:
+  port: 8080
+  host: "0.0.0.0"
+dry_run: true
+default_similarity: 75
+mock_mode: true
+`,
+			wantErr:     true,
+			errContains: `server host "0.0.0.0" is not allowed`,
 		},
 		{
 			name: "missing jmap endpoint",
@@ -283,6 +309,72 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestValidate_ServerHost(t *testing.T) {
+	tests := []struct {
+		host    string
+		wantErr bool
+	}{
+		{host: "localhost"},
+		{host: "LocalHost"},
+		{host: "127.0.0.1"},
+		{host: "127.0.0.2"},
+		{host: "::1"},
+		{host: "", wantErr: true},
+		{host: "0.0.0.0", wantErr: true},
+		{host: "::", wantErr: true},
+		{host: "192.168.1.10", wantErr: true},
+		{host: "example.com", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%q", tt.host), func(t *testing.T) {
+			cfg := Config{DefaultSimilarity: 60, MockMode: true}
+			cfg.Server.Port = 8080
+			cfg.Server.Host = tt.host
+
+			err := cfg.validate()
+			if !tt.wantErr {
+				if err != nil {
+					t.Errorf("validate() unexpected error = %v", err)
+				}
+				return
+			}
+			want := fmt.Sprintf("server host %q is not allowed", tt.host)
+			if err == nil || !contains(err.Error(), want) {
+				t.Errorf("validate() error = %v, want error containing %q", err, want)
+			}
+		})
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{host: "localhost", want: true},
+		{host: "LOCALHOST", want: true},
+		{host: "127.0.0.1", want: true},
+		{host: "127.255.255.254", want: true},
+		{host: "::1", want: true},
+		{host: "::ffff:127.0.0.1", want: true},
+		{host: "", want: false},
+		{host: "0.0.0.0", want: false},
+		{host: "::", want: false},
+		{host: "10.0.0.1", want: false},
+		{host: "localhost.example.com", want: false},
+		{host: "[::1]", want: false}, // callers pass the bare host, without brackets
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%q", tt.host), func(t *testing.T) {
+			if got := IsLoopbackHost(tt.host); got != tt.want {
+				t.Errorf("IsLoopbackHost(%q) = %v, want %v", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGetServerAddr(t *testing.T) {
 	tests := []struct {
 		name string
@@ -307,6 +399,12 @@ func TestGetServerAddr(t *testing.T) {
 			host: "",
 			port: 8080,
 			want: ":8080",
+		},
+		{
+			name: "IPv6 loopback with port 8080",
+			host: "::1",
+			port: 8080,
+			want: "[::1]:8080",
 		},
 	}
 
