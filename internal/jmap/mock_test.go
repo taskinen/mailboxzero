@@ -489,6 +489,26 @@ func TestMockClient_GenerateSampleEmails(t *testing.T) {
 	}
 }
 
+// TestMockClient_SampleDataIsFixed checks that every mock client starts with
+// the same sample inbox, so demos, screenshots and tests are reproducible.
+func TestMockClient_SampleDataIsFixed(t *testing.T) {
+	first, second := NewMockClient(), NewMockClient()
+
+	// 10 senders with 3, 4 or 5 emails each, plus 2 unique emails.
+	if len(first.sampleEmails) != 41 {
+		t.Errorf("sample inbox has %d emails, want 41", len(first.sampleEmails))
+	}
+	if len(second.sampleEmails) != len(first.sampleEmails) {
+		t.Fatalf("two mock clients have %d and %d sample emails", len(first.sampleEmails), len(second.sampleEmails))
+	}
+	for i := range first.sampleEmails {
+		a, b := first.sampleEmails[i], second.sampleEmails[i]
+		if a.ID != b.ID || a.Subject != b.Subject {
+			t.Errorf("sample email %d differs: %s %q vs %s %q", i, a.ID, a.Subject, b.ID, b.Subject)
+		}
+	}
+}
+
 // TestMockClient_ConcurrentAccess archives, unarchives and reads the inbox
 // from many goroutines at once, as concurrent HTTP handlers do in mock mode.
 // Run with -race (as CI does) to catch unsynchronized access to the
