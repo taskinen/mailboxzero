@@ -399,6 +399,15 @@ header h1 {
     font-size: 0.85em;
 }
 
+.archive-status.error {
+    background-color: #fdecea;
+    border-color: #f5c6cb;
+}
+
+.archive-status.error .archive-status-text {
+    color: #c0392b;
+}
+
 @keyframes undoGlow {
     0%, 100% {
         text-shadow: 0 0 4px rgba(40, 167, 69, 0.5);

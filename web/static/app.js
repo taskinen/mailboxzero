@@ -261,7 +261,7 @@ class MailboxZero {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw await this.errorFromResponse(response, 'archive');
             }
 
             await response.json();
@@ -273,8 +273,9 @@ class MailboxZero {
             this.clearResults(); // Clear similar emails
         } catch (error) {
             console.error('Error archiving emails:', error);
-            alert('Failed to archive emails.');
             this.hideArchiveModal();
+            this.showArchiveError(this.failureMessage(error, 'archive'));
+            this.loadEmails(); // Some emails may have moved before the failure
         }
     }
 
@@ -291,7 +292,7 @@ class MailboxZero {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw await this.errorFromResponse(response, 'archive');
             }
 
             await response.json();
@@ -302,15 +303,43 @@ class MailboxZero {
             await this.findSimilarEmails();
         } catch (error) {
             console.error('Error in archive & find next:', error);
-            alert('Failed to archive emails.');
+            this.showArchiveError(this.failureMessage(error, 'archive'));
+            this.loadEmails(); // Some emails may have moved before the failure
         }
     }
 
     showArchiveStatus(count) {
         this.archiveStatusText.textContent = `Successfully archived ${count} e-mail(s)`;
         this.archiveStatusText.classList.remove('glow');
+        this.archiveStatus.classList.remove('error');
         this.archiveUndoBtn.style.display = '';
         this.archiveStatus.style.display = '';
+    }
+
+    // Show a failed archive or undo in the status pill, with the reason,
+    // instead of a blocking alert.
+    showArchiveError(message) {
+        this.archiveStatusText.textContent = message;
+        this.archiveStatusText.classList.remove('glow');
+        this.archiveStatus.classList.add('error');
+        this.archiveUndoBtn.style.display = 'none';
+        this.archiveStatus.style.display = '';
+    }
+
+    // Turn a failed response into an Error carrying the server's message,
+    // which names each email JMAP rejected and why.
+    async errorFromResponse(response, action) {
+        const message = (await response.text()).trim();
+        return new Error(message || `Failed to ${action} emails (HTTP ${response.status})`);
+    }
+
+    // The text to show for a failed request. fetch() throws a TypeError when
+    // the server cannot be reached at all.
+    failureMessage(error, action) {
+        if (error instanceof TypeError) {
+            return `Failed to ${action} emails: could not reach the server`;
+        }
+        return error.message;
     }
 
     // Forget the inbox selection once its email has been archived, so the
@@ -335,7 +364,7 @@ class MailboxZero {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw await this.errorFromResponse(response, 'unarchive');
             }
 
             await response.json();
@@ -345,7 +374,7 @@ class MailboxZero {
             this.lastArchivedIds = [];
         } catch (error) {
             console.error('Error undoing archive:', error);
-            alert('Failed to undo archive.');
+            this.showArchiveError(this.failureMessage(error, 'unarchive'));
         }
     }
 
