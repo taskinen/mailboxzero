@@ -3,13 +3,18 @@ package jmap
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
 // MockClient implements the JMAP client interface but returns sample data
 type MockClient struct {
 	sampleEmails []Email
-	archivedIDs  map[string]bool
+
+	// mu guards archivedIDs: the HTTP server calls the client from
+	// concurrent request handlers.
+	mu          sync.Mutex
+	archivedIDs map[string]bool
 }
 
 // NewMockClient creates a new mock JMAP client with sample data
@@ -54,25 +59,9 @@ func (m *MockClient) GetInboxEmails(limit int) ([]Email, error) {
 
 // GetInboxEmailsPaginated returns paginated sample emails that haven't been archived
 func (m *MockClient) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
-	var inboxEmails []Email
-	for _, email := range m.sampleEmails {
-		if !m.archivedIDs[email.ID] {
-			inboxEmails = append(inboxEmails, email)
-		}
-	}
-
-	// Apply pagination
-	start := offset
-	if start >= len(inboxEmails) {
-		return []Email{}, nil
-	}
-
-	end := start + limit
-	if end > len(inboxEmails) {
-		end = len(inboxEmails)
-	}
-
-	return inboxEmails[start:end], nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return paginate(m.inboxEmails(), limit, offset), nil
 }
 
 // GetInboxEmailsWithCount returns sample emails with total count
@@ -82,23 +71,35 @@ func (m *MockClient) GetInboxEmailsWithCount(limit int) (*InboxInfo, error) {
 
 // GetInboxEmailsWithCountPaginated returns paginated sample emails with total count
 func (m *MockClient) GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo, error) {
-	// Count all non-archived emails
-	totalCount := 0
-	for _, email := range m.sampleEmails {
-		if !m.archivedIDs[email.ID] {
-			totalCount++
-		}
-	}
-
-	emails, err := m.GetInboxEmailsPaginated(limit, offset)
-	if err != nil {
-		return nil, err
-	}
+	// Take the page and the count under one lock so they always agree.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	inbox := m.inboxEmails()
 
 	return &InboxInfo{
-		Emails:     emails,
-		TotalCount: totalCount,
+		Emails:     paginate(inbox, limit, offset),
+		TotalCount: len(inbox),
 	}, nil
+}
+
+// inboxEmails returns the sample emails that haven't been archived.
+// The caller must hold m.mu.
+func (m *MockClient) inboxEmails() []Email {
+	var inbox []Email
+	for _, email := range m.sampleEmails {
+		if !m.archivedIDs[email.ID] {
+			inbox = append(inbox, email)
+		}
+	}
+	return inbox
+}
+
+// paginate returns up to limit emails starting at offset.
+func paginate(emails []Email, limit, offset int) []Email {
+	if offset >= len(emails) {
+		return []Email{}
+	}
+	return emails[offset:min(offset+limit, len(emails))]
 }
 
 // ArchiveEmails simulates archiving by marking emails as archived
@@ -109,6 +110,8 @@ func (m *MockClient) ArchiveEmails(emailIDs []string, dryRun bool) error {
 	}
 
 	fmt.Printf("[MOCK MODE] Archiving %d emails: %v\n", len(emailIDs), emailIDs)
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, id := range emailIDs {
 		m.archivedIDs[id] = true
 	}
@@ -123,6 +126,8 @@ func (m *MockClient) UnarchiveEmails(emailIDs []string, dryRun bool) error {
 	}
 
 	fmt.Printf("[MOCK MODE] Unarchiving %d emails: %v\n", len(emailIDs), emailIDs)
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, id := range emailIDs {
 		delete(m.archivedIDs, id)
 	}
