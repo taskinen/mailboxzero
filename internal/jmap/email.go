@@ -337,15 +337,13 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 		}, "0"},
 	}
 
+	// Return these errors as they are: the HTTP handler already adds the
+	// "Failed to archive emails:" prefix the user sees.
 	resp, err := c.makeRequest(methodCalls)
 	if err != nil {
-		return fmt.Errorf("failed to archive emails: %w", err)
+		return err
 	}
-	if err := checkSetResponse(resp); err != nil {
-		return fmt.Errorf("failed to archive emails: %w", err)
-	}
-
-	return nil
+	return checkSetResponse(resp)
 }
 
 func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
@@ -398,15 +396,13 @@ func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
 		}, "0"},
 	}
 
+	// Return these errors as they are: the HTTP handler already adds the
+	// "Failed to unarchive emails:" prefix the user sees.
 	resp, err := c.makeRequest(methodCalls)
 	if err != nil {
-		return fmt.Errorf("failed to unarchive emails: %w", err)
+		return err
 	}
-	if err := checkSetResponse(resp); err != nil {
-		return fmt.Errorf("failed to unarchive emails: %w", err)
-	}
-
-	return nil
+	return checkSetResponse(resp)
 }
 
 // checkSetResponse returns an error when the server rejected an Email/set

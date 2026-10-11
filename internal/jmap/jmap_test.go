@@ -816,12 +816,12 @@ func TestClient_MoveEmails_ReportsRejectedEmails(t *testing.T) {
 		{
 			name:    "archive",
 			move:    func(ids []string) error { return c.ArchiveEmails(ids, false) },
-			wantErr: "failed to archive emails: server rejected 1 email(s): e2 (notFound: no such email)",
+			wantErr: "server rejected 1 email(s): e2 (notFound: no such email)",
 		},
 		{
 			name:    "unarchive",
 			move:    func(ids []string) error { return c.UnarchiveEmails(ids, false) },
-			wantErr: "failed to unarchive emails: server rejected 1 email(s): e2 (notFound: no such email)",
+			wantErr: "server rejected 1 email(s): e2 (notFound: no such email)",
 		},
 	}
 
