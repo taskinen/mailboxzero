@@ -2,7 +2,7 @@
 
 ## Project Status: ✅ COMPLETED
 
-**Last Updated:** May 30, 2026 (similarity algorithm rewrite)
+**Last Updated:** October 11, 2026 (README refresh)
 **Version:** 1.0
 **Status:** Production Ready (with dry run safety)
 
@@ -255,7 +255,7 @@ go run main.go
 - Sample emails include groups of similar messages for testing similarity matching
 - Simulates archiving operations without affecting real emails
 - Perfect for development, testing, and demonstrations
-- Provides consistent test data across runs
+- Same senders, subjects and content on every run; only the number of emails per sender (3–5) is randomized, so totals vary between runs
 
 **Mock Configuration:**
 ```yaml
