@@ -8,6 +8,9 @@ import (
 	"testing"
 )
 
+// fakeAPIToken is the only bearer token the fake server accepts.
+const fakeAPIToken = "test-token"
+
 // jmapMethodHandler answers one JMAP method call with its result object.
 type jmapMethodHandler func(args map[string]interface{}) map[string]interface{}
 
@@ -17,17 +20,21 @@ type jmapCall struct {
 	args map[string]interface{}
 }
 
-// fakeJMAPServer speaks just enough JMAP over HTTP to test the real Client.
-// Each test registers a handler per method name; the server records every
-// request so tests can assert on what the client sent.
+// fakeJMAPServer speaks just enough JMAP over HTTP to test the real Client:
+// a GET returns the session resource, and a POST is an API request. Every
+// request must carry the bearer token fakeAPIToken. Each test registers a
+// handler per method name; the server records every request so tests can
+// assert on what the client sent.
 type fakeJMAPServer struct {
 	t        *testing.T
+	url      string
 	handlers map[string]jmapMethodHandler
 
-	// mu guards requests, which the server's handler goroutine appends to
-	// while the test reads it.
+	// mu guards requests and auth, which the server's handler goroutine
+	// appends to while the test reads them.
 	mu       sync.Mutex
-	requests [][]jmapCall // the method calls of each HTTP request, in order
+	requests [][]jmapCall // the method calls of each API request, in order
+	auth     []string     // the Authorization header of every HTTP request
 }
 
 // newFakeJMAPServer starts a fake JMAP server that answers the given methods
@@ -39,9 +46,10 @@ func newFakeJMAPServer(t *testing.T, handlers map[string]jmapMethodHandler) (*fa
 	f := &fakeJMAPServer{t: t, handlers: handlers}
 	srv := httptest.NewServer(http.HandlerFunc(f.serveHTTP))
 	t.Cleanup(srv.Close)
+	f.url = srv.URL
 
 	client := &Client{
-		apiToken:   "test-token",
+		apiToken:   fakeAPIToken,
 		httpClient: srv.Client(),
 		session: &Session{
 			APIUrl:          srv.URL,
@@ -52,6 +60,20 @@ func newFakeJMAPServer(t *testing.T, handlers map[string]jmapMethodHandler) (*fa
 }
 
 func (f *fakeJMAPServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	auth := r.Header.Get("Authorization")
+	f.mu.Lock()
+	f.auth = append(f.auth, auth)
+	f.mu.Unlock()
+	if auth != "Bearer "+fakeAPIToken {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		f.serveSession(w)
+		return
+	}
+
 	var req struct {
 		MethodCalls [][]interface{} `json:"methodCalls"`
 	}
@@ -84,7 +106,34 @@ func (f *fakeJMAPServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"methodResponses": responses})
 }
 
-// requestMethods returns the method names of each HTTP request received so
+// serveSession answers with a JMAP session resource whose API is this
+// server and whose primary mail account is "acc".
+func (f *fakeJMAPServer) serveSession(w http.ResponseWriter) {
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"username":        "test@example.com",
+		"apiUrl":          f.url,
+		"primaryAccounts": map[string]string{"urn:ietf:params:jmap:mail": "acc"},
+		"accounts": map[string]interface{}{
+			"acc": map[string]interface{}{"name": "test@example.com", "isPersonal": true},
+		},
+	})
+}
+
+// sessionURL returns the URL of the server's JMAP session resource, the
+// endpoint a Client authenticates against.
+func (f *fakeJMAPServer) sessionURL() string {
+	return f.url + "/.well-known/jmap"
+}
+
+// authHeaders returns the Authorization header of every HTTP request
+// received so far, session and API requests alike.
+func (f *fakeJMAPServer) authHeaders() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.auth...)
+}
+
+// requestMethods returns the method names of each API request received so
 // far, e.g. [["Mailbox/get"], ["Email/query", "Email/get"]].
 func (f *fakeJMAPServer) requestMethods() [][]string {
 	f.mu.Lock()
