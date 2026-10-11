@@ -102,6 +102,10 @@ func (s *Server) handleGetEmails(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to get emails: %v", err), http.StatusInternalServerError)
 		return
 	}
+	// Encode an empty inbox as [] rather than null; the frontend iterates it.
+	if inboxInfo.Emails == nil {
+		inboxInfo.Emails = []jmap.Email{}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(inboxInfo); err != nil {
@@ -146,6 +150,10 @@ func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
 		similarEmails = similarity.FindSimilarToEmail(*targetEmail, emails, req.SimilarityThreshold/100.0)
 	} else {
 		similarEmails = similarity.FindSimilarEmails(emails, req.SimilarityThreshold/100.0)
+	}
+	// No matches must encode as [] rather than null; the frontend reads .length.
+	if similarEmails == nil {
+		similarEmails = []jmap.Email{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
