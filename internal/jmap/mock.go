@@ -2,7 +2,6 @@ package jmap
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -183,8 +182,9 @@ func (m *MockClient) generateSampleEmails() {
 		baseSubject := subjects[i]
 		baseContent := contents[i]
 
-		// Create 3-5 similar emails for each sender
-		numSimilar := 3 + rand.Intn(3)
+		// Create 3-5 similar emails for each sender. The count is fixed per
+		// sender so the sample inbox is the same on every run (41 emails).
+		numSimilar := 3 + i%3
 		for j := 0; j < numSimilar; j++ {
 			email := Email{
 				ID:         fmt.Sprintf("email-%d-%d", i, j),

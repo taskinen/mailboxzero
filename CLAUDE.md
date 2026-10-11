@@ -260,12 +260,12 @@ go run main.go
 ```
 
 **Mock Mode Features:**
-- Uses realistic sample email data (~32–52 emails: 10 senders × 3–5 messages plus 2 unique)
+- Uses realistic sample email data (41 emails: 10 senders with 3, 4 or 5 messages each, plus 2 unique)
 - No real JMAP connection required
 - Sample emails include groups of similar messages for testing similarity matching
 - Simulates archiving operations without affecting real emails
 - Perfect for development, testing, and demonstrations
-- Same senders, subjects and content on every run; only the number of emails per sender (3–5) is randomized, so totals vary between runs
+- The same 41 emails (senders, subjects, content, IDs) on every run; only the dates move with today so the inbox always looks recent
 
 **Mock Configuration:**
 ```yaml
