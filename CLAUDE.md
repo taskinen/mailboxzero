@@ -110,7 +110,7 @@ mailboxzero/
   - JSON API responses
   - Error handling and logging
   - Static file serving
-  - Inbox cache for `/api/similar`: the 1000-email JMAP fetch is cached in-process for 60 seconds (`inboxCacheTTL`) and invalidated at the end of `handleArchive`/`handleUnarchive`, so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP
+  - Inbox cache for `/api/similar`: the 1000-email JMAP fetch is cached in-process for 60 seconds (`inboxCacheTTL`) and invalidated by `handleArchive`/`handleUnarchive`, even when they fail (JMAP can reject some emails while moving the rest), so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP
 
 #### 5. Frontend Interface (`web/`)
 - **Template:** `index.html` - Responsive dual-pane layout
@@ -199,7 +199,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
     "emailIds": ["id1", "id2", "id3"]
   }
   ```
-- **Response:** Success confirmation with dry run status
+- **Response:** Success confirmation with dry run status. If JMAP rejects the Email/set call or any of the emails (`notUpdated`), HTTP 500 with a message naming each rejected email and the reason
 
 ### POST /api/unarchive
 - **Purpose:** Move previously archived emails back to the inbox (Undo)
@@ -209,7 +209,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
     "emailIds": ["id1", "id2", "id3"]
   }
   ```
-- **Response:** Success confirmation with dry run status (same shape as `/api/archive`)
+- **Response:** Success confirmation with dry run status (same shape as `/api/archive`, including the HTTP 500 for rejected emails)
 
 ### POST /api/clear
 - **Purpose:** Clear similarity results

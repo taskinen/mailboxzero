@@ -1044,3 +1044,72 @@ func TestHandleUnarchive_InvalidatesInboxCache(t *testing.T) {
 		t.Errorf("expected 2 inbox fetches after unarchive, got %d", counter.getInboxCalls)
 	}
 }
+
+// failingMoveJMAPClient fails every archive and unarchive request.
+type failingMoveJMAPClient struct {
+	jmap.JMAPClient
+	err error
+}
+
+func (c *failingMoveJMAPClient) ArchiveEmails(emailIDs []string, dryRun bool) error {
+	return c.err
+}
+
+func (c *failingMoveJMAPClient) UnarchiveEmails(emailIDs []string, dryRun bool) error {
+	return c.err
+}
+
+// A failed archive or unarchive may still have moved some of the emails
+// (JMAP rejects emails individually), so the inbox cache must be dropped
+// even when the handler returns an error.
+func TestHandleMove_FailureInvalidatesInboxCache(t *testing.T) {
+	tests := []struct {
+		name     string
+		handle   func(*Server, http.ResponseWriter, *http.Request)
+		path     string
+		wantBody string
+	}{
+		{
+			name:     "archive",
+			handle:   (*Server).handleArchive,
+			path:     "/api/archive",
+			wantBody: "Failed to archive emails: server rejected 1 email(s): e2 (notFound)",
+		},
+		{
+			name:     "unarchive",
+			handle:   (*Server).handleUnarchive,
+			path:     "/api/unarchive",
+			wantBody: "Failed to unarchive emails: server rejected 1 email(s): e2 (notFound)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := &Server{
+				config: &config.Config{},
+				jmapClient: &failingMoveJMAPClient{
+					JMAPClient: jmap.NewMockClient(),
+					err:        errors.New("server rejected 1 email(s): e2 (notFound)"),
+				},
+				inboxCache:    []jmap.Email{{ID: "e1"}, {ID: "e2"}},
+				inboxCachedAt: time.Now(),
+			}
+
+			body, _ := json.Marshal(ArchiveRequest{EmailIDs: []string{"e1", "e2"}})
+			req := httptest.NewRequest("POST", tt.path, bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			tt.handle(server, w, req)
+
+			if w.Code != http.StatusInternalServerError {
+				t.Errorf("status = %v, want %v", w.Code, http.StatusInternalServerError)
+			}
+			if got := strings.TrimSpace(w.Body.String()); got != tt.wantBody {
+				t.Errorf("body = %q, want %q", got, tt.wantBody)
+			}
+			if server.inboxCache != nil {
+				t.Error("inbox cache kept after a failed move; emails the server did move would still be listed")
+			}
+		})
+	}
+}
