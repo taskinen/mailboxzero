@@ -179,11 +179,15 @@ func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.jmapClient.ArchiveEmails(req.EmailIDs, s.config.DryRun); err != nil {
+	err := s.jmapClient.ArchiveEmails(req.EmailIDs, s.config.DryRun)
+	// Invalidate even on failure: when the server rejects only some of the
+	// emails, the others have still moved.
+	s.invalidateInboxCache()
+	if err != nil {
+		log.Printf("Archive failed: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to archive emails: %v", err), http.StatusInternalServerError)
 		return
 	}
-	s.invalidateInboxCache()
 
 	response := map[string]interface{}{
 		"success": true,
@@ -207,11 +211,15 @@ func (s *Server) handleUnarchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.jmapClient.UnarchiveEmails(req.EmailIDs, s.config.DryRun); err != nil {
+	err := s.jmapClient.UnarchiveEmails(req.EmailIDs, s.config.DryRun)
+	// Invalidate even on failure: when the server rejects only some of the
+	// emails, the others have still moved.
+	s.invalidateInboxCache()
+	if err != nil {
+		log.Printf("Unarchive failed: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to unarchive emails: %v", err), http.StatusInternalServerError)
 		return
 	}
-	s.invalidateInboxCache()
 
 	response := map[string]interface{}{
 		"success": true,

@@ -669,3 +669,151 @@ func TestInboxInfo(t *testing.T) {
 		t.Errorf("InboxInfo.TotalCount = %d, want 10", info.TotalCount)
 	}
 }
+
+func TestCheckSetResponse(t *testing.T) {
+	setResponse := func(name string, args map[string]interface{}) *Response {
+		return &Response{MethodResponses: [][]interface{}{{name, args, "0"}}}
+	}
+
+	tests := []struct {
+		name    string
+		resp    *Response
+		wantErr string
+	}{
+		{
+			name: "all updated",
+			resp: setResponse("Email/set", map[string]interface{}{
+				"updated":    map[string]interface{}{"e1": nil, "e2": nil},
+				"notUpdated": nil,
+			}),
+		},
+		{
+			name: "empty notUpdated",
+			resp: setResponse("Email/set", map[string]interface{}{
+				"updated":    map[string]interface{}{"e1": nil},
+				"notUpdated": map[string]interface{}{},
+			}),
+		},
+		{
+			name: "some emails rejected",
+			resp: setResponse("Email/set", map[string]interface{}{
+				"updated": map[string]interface{}{"e2": nil},
+				"notUpdated": map[string]interface{}{
+					"e3": map[string]interface{}{"type": "forbidden"},
+					"e1": map[string]interface{}{"type": "notFound", "description": "no such email"},
+				},
+			}),
+			wantErr: "server rejected 2 email(s): e1 (notFound: no such email), e3 (forbidden)",
+		},
+		{
+			name:    "rejection without type",
+			resp:    setResponse("Email/set", map[string]interface{}{"notUpdated": map[string]interface{}{"e1": nil}}),
+			wantErr: "server rejected 1 email(s): e1 (unknown error)",
+		},
+		{
+			name: "method error",
+			resp: setResponse("error", map[string]interface{}{
+				"type":        "invalidArguments",
+				"description": "bad patch",
+			}),
+			wantErr: "server rejected Email/set: invalidArguments: bad patch",
+		},
+		{
+			name:    "unexpected method response",
+			resp:    setResponse("Mailbox/get", map[string]interface{}{}),
+			wantErr: `unexpected response to Email/set: "Mailbox/get"`,
+		},
+		{
+			name:    "no method responses",
+			resp:    &Response{},
+			wantErr: "invalid Email/set response format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSetResponse(tt.resp)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("checkSetResponse() unexpected error = %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Errorf("checkSetResponse() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestClient_MoveEmails_ReportsRejectedEmails checks that archive and
+// unarchive report emails the server refused to move instead of succeeding.
+func TestClient_MoveEmails_ReportsRejectedEmails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MethodCalls [][]interface{} `json:"methodCalls"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("failed to decode JMAP request: %v", err)
+			return
+		}
+		call := req.MethodCalls[0]
+		var result map[string]interface{}
+		switch call[0] {
+		case "Mailbox/get":
+			result = map[string]interface{}{"accountId": "acc", "list": []interface{}{
+				map[string]interface{}{"id": "mb-inbox", "name": "Inbox", "role": "inbox"},
+				map[string]interface{}{"id": "mb-archive", "name": "Archive", "role": "archive"},
+			}}
+		case "Email/set":
+			result = map[string]interface{}{
+				"accountId": "acc",
+				"updated":   map[string]interface{}{"e1": nil},
+				"notUpdated": map[string]interface{}{
+					"e2": map[string]interface{}{"type": "notFound", "description": "no such email"},
+				},
+			}
+		default:
+			t.Errorf("unexpected JMAP method %v", call[0])
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"methodResponses": []interface{}{[]interface{}{call[0], result, call[2]}},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{
+		apiToken:   "test-token",
+		httpClient: srv.Client(),
+		session: &Session{
+			APIUrl:          srv.URL,
+			PrimaryAccounts: map[string]string{"urn:ietf:params:jmap:mail": "acc"},
+		},
+	}
+
+	tests := []struct {
+		name    string
+		move    func(ids []string) error
+		wantErr string
+	}{
+		{
+			name:    "archive",
+			move:    func(ids []string) error { return c.ArchiveEmails(ids, false) },
+			wantErr: "failed to archive emails: server rejected 1 email(s): e2 (notFound: no such email)",
+		},
+		{
+			name:    "unarchive",
+			move:    func(ids []string) error { return c.UnarchiveEmails(ids, false) },
+			wantErr: "failed to unarchive emails: server rejected 1 email(s): e2 (notFound: no such email)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.move([]string{"e1", "e2"})
+			if err == nil || err.Error() != tt.wantErr {
+				t.Errorf("error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -2,6 +2,8 @@ package jmap
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -337,8 +339,11 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 		}, "0"},
 	}
 
-	_, err = c.makeRequest(methodCalls)
+	resp, err := c.makeRequest(methodCalls)
 	if err != nil {
+		return fmt.Errorf("failed to archive emails: %w", err)
+	}
+	if err := checkSetResponse(resp); err != nil {
 		return fmt.Errorf("failed to archive emails: %w", err)
 	}
 
@@ -395,12 +400,66 @@ func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
 		}, "0"},
 	}
 
-	_, err = c.makeRequest(methodCalls)
+	resp, err := c.makeRequest(methodCalls)
 	if err != nil {
+		return fmt.Errorf("failed to unarchive emails: %w", err)
+	}
+	if err := checkSetResponse(resp); err != nil {
 		return fmt.Errorf("failed to unarchive emails: %w", err)
 	}
 
 	return nil
+}
+
+// checkSetResponse returns an error when the server rejected an Email/set
+// call, either as a whole (an "error" method response) or for some of the
+// emails (notUpdated). JMAP reports these inside a successful HTTP response,
+// so without this check a rejected archive or unarchive looked like success.
+func checkSetResponse(resp *Response) error {
+	if len(resp.MethodResponses) == 0 || len(resp.MethodResponses[0]) < 2 {
+		return fmt.Errorf("invalid Email/set response format")
+	}
+
+	name, _ := resp.MethodResponses[0][0].(string)
+	args, _ := resp.MethodResponses[0][1].(map[string]interface{})
+	switch name {
+	case "Email/set":
+	case "error":
+		return fmt.Errorf("server rejected Email/set: %s", describeJMAPError(args))
+	default:
+		return fmt.Errorf("unexpected response to Email/set: %q", name)
+	}
+
+	notUpdated, _ := args["notUpdated"].(map[string]interface{})
+	if len(notUpdated) == 0 {
+		return nil
+	}
+
+	ids := make([]string, 0, len(notUpdated))
+	for id := range notUpdated {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	details := make([]string, len(ids))
+	for i, id := range ids {
+		setError, _ := notUpdated[id].(map[string]interface{})
+		details[i] = fmt.Sprintf("%s (%s)", id, describeJMAPError(setError))
+	}
+	return fmt.Errorf("server rejected %d email(s): %s", len(ids), strings.Join(details, ", "))
+}
+
+// describeJMAPError formats a JMAP error or SetError object as "type" or
+// "type: description".
+func describeJMAPError(e map[string]interface{}) string {
+	errType := getString(e, "type")
+	if errType == "" {
+		errType = "unknown error"
+	}
+	if description := getString(e, "description"); description != "" {
+		return errType + ": " + description
+	}
+	return errType
 }
 
 func parseEmail(data map[string]interface{}) Email {
