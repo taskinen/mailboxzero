@@ -1,6 +1,9 @@
 package jmap
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -435,6 +438,114 @@ func TestClient_ArchiveEmails_Real(t *testing.T) {
 	if afterInfo.TotalCount != initialCount-1 {
 		t.Errorf("ArchiveEmails() inbox count = %d, want %d",
 			afterInfo.TotalCount, initialCount-1)
+	}
+}
+
+// TestClient_MoveEmails_PatchesOnlyInboxAndArchive checks that archiving and
+// unarchiving patch just the inbox and archive memberships, so any other
+// mailbox the email belongs to (a Fastmail label) is left untouched.
+func TestClient_MoveEmails_PatchesOnlyInboxAndArchive(t *testing.T) {
+	inbox := map[string]interface{}{"id": "mb-inbox", "name": "Inbox", "role": "inbox"}
+	archive := map[string]interface{}{"id": "mb-archive", "name": "Archive", "role": "archive"}
+	label := map[string]interface{}{"id": "mb-label", "name": "Receipts"}
+
+	tests := []struct {
+		name      string
+		mailboxes []interface{}
+		move      func(c *Client, ids []string) error
+		wantPatch string
+		wantErr   string
+	}{
+		{
+			name:      "archive",
+			mailboxes: []interface{}{inbox, archive, label},
+			move:      func(c *Client, ids []string) error { return c.ArchiveEmails(ids, false) },
+			wantPatch: `{"mailboxIds/mb-archive":true,"mailboxIds/mb-inbox":null}`,
+		},
+		{
+			name:      "unarchive",
+			mailboxes: []interface{}{inbox, archive, label},
+			move:      func(c *Client, ids []string) error { return c.UnarchiveEmails(ids, false) },
+			wantPatch: `{"mailboxIds/mb-archive":null,"mailboxIds/mb-inbox":true}`,
+		},
+		{
+			name:      "unarchive without archive mailbox",
+			mailboxes: []interface{}{inbox, label},
+			move:      func(c *Client, ids []string) error { return c.UnarchiveEmails(ids, false) },
+			wantErr:   "archive folder not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The handler runs on the server's goroutine; hand the Email/set
+			// update map back to the test through a channel.
+			updates := make(chan map[string]interface{}, 1)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					MethodCalls [][]interface{} `json:"methodCalls"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode JMAP request: %v", err)
+					return
+				}
+				call := req.MethodCalls[0]
+				var result map[string]interface{}
+				switch call[0] {
+				case "Mailbox/get":
+					result = map[string]interface{}{"accountId": "acc", "list": tt.mailboxes}
+				case "Email/set":
+					args, _ := call[1].(map[string]interface{})
+					update, _ := args["update"].(map[string]interface{})
+					updates <- update
+					updated := map[string]interface{}{}
+					for id := range update {
+						updated[id] = nil
+					}
+					result = map[string]interface{}{"accountId": "acc", "updated": updated, "notUpdated": nil}
+				default:
+					t.Errorf("unexpected JMAP method %v", call[0])
+				}
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"methodResponses": []interface{}{[]interface{}{call[0], result, call[2]}},
+				})
+			}))
+			defer srv.Close()
+
+			c := &Client{
+				apiToken:   "test-token",
+				httpClient: srv.Client(),
+				session: &Session{
+					APIUrl:          srv.URL,
+					PrimaryAccounts: map[string]string{"urn:ietf:params:jmap:mail": "acc"},
+				},
+			}
+
+			err := tt.move(c, []string{"e1", "e2"})
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("error = %v, want %q", err, tt.wantErr)
+				}
+				if len(updates) != 0 {
+					t.Error("Email/set was sent even though the move could not be made")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			update := <-updates
+			if len(update) != 2 {
+				t.Fatalf("Email/set updated %d emails, want 2", len(update))
+			}
+			for _, id := range []string{"e1", "e2"} {
+				got, _ := json.Marshal(update[id])
+				if string(got) != tt.wantPatch {
+					t.Errorf("patch for %s = %s, want %s", id, got, tt.wantPatch)
+				}
+			}
+		})
 	}
 }
 

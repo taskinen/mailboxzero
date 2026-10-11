@@ -24,7 +24,7 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 ## Safety Features
 
 - **DRY RUN MODE**: All write operations are disabled by default
-- **Archive Only**: The only write operation is moving emails to archive (never deletes)
+- **Archive Only**: The only write operation is moving emails to archive (never deletes); any other labels on an email are kept
 - **Confirmation Dialog**: Required before archiving via "Archive Selected" (the opt-in "Archive & Find Next" button intentionally skips it)
 - **Undo Archive**: An "Undo" button appears after each successful archive and moves the affected messages back to the inbox via `POST /api/unarchive`
 - **Visual Warnings**: Clear indication when in dry run mode

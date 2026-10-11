@@ -77,7 +77,7 @@ mailboxzero/
   - Session authentication with Bearer tokens
   - Mailbox discovery (inbox, archive)
   - Email querying and retrieval with body content, including a paginated `GetInboxEmailsWithCountPaginated` used by the `/api/emails` endpoint
-  - Safe archive operations (move to archive folder)
+  - Safe archive operations: archive and unarchive send an Email/set patch that changes only the inbox and archive memberships (`mailboxIds/<id>`), so any other mailbox or label the email is in is kept
   - Comprehensive error handling
 
 #### 3. Similarity Engine (`internal/similarity/`)

@@ -318,12 +318,15 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 		return fmt.Errorf("archive folder not found")
 	}
 
+	// Patch only the inbox and archive memberships. Replacing the whole
+	// mailboxIds map would also drop every other mailbox (Fastmail label)
+	// the email belongs to. JMAP ids never contain "/" or "~", so they need
+	// no JSON Pointer escaping.
 	updates := make(map[string]interface{})
 	for _, emailID := range emailIDs {
 		updates[emailID] = map[string]interface{}{
-			"mailboxIds": map[string]bool{
-				archiveID: true,
-			},
+			"mailboxIds/" + inboxID:   nil,
+			"mailboxIds/" + archiveID: true,
 		}
 	}
 
@@ -358,23 +361,30 @@ func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
 		return fmt.Errorf("failed to get mailboxes: %w", err)
 	}
 
-	var inboxID string
+	var inboxID, archiveID string
 	for _, mb := range mailboxes {
 		if mb.Role == "inbox" {
 			inboxID = mb.ID
+		}
+		if mb.Role == "archive" {
+			archiveID = mb.ID
 		}
 	}
 
 	if inboxID == "" {
 		return fmt.Errorf("inbox not found")
 	}
+	if archiveID == "" {
+		return fmt.Errorf("archive folder not found")
+	}
 
+	// The reverse of ArchiveEmails: leave the archive and rejoin the inbox,
+	// keeping every other mailbox membership.
 	updates := make(map[string]interface{})
 	for _, emailID := range emailIDs {
 		updates[emailID] = map[string]interface{}{
-			"mailboxIds": map[string]bool{
-				inboxID: true,
-			},
+			"mailboxIds/" + archiveID: nil,
+			"mailboxIds/" + inboxID:   true,
 		}
 	}
 
