@@ -1,0 +1,19 @@
+# Dependabot opens a pull request for each outdated dependency, checked
+# weekly: Go modules, the GitHub Actions used in workflows, and the
+# Playwright package of the end-to-end tests.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
