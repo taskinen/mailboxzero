@@ -12,7 +12,7 @@ permissions:
 jobs:
   format:
     name: Check Formatting
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
@@ -38,7 +38,7 @@ jobs:
 
   test:
     name: Run Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
@@ -100,7 +100,7 @@ jobs:
 
   e2e:
     name: End-to-End Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
