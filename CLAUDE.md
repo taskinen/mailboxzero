@@ -162,7 +162,7 @@ mailboxzero/
 ```yaml
 server:
   port: 8080                    # Default web server port
-  host: "localhost"             # Server binding host
+  host: "localhost"             # Server binding host: localhost, 127.0.0.1 or ::1 only
 
 jmap:
   endpoint: "https://api.fastmail.com/jmap/session"
@@ -173,6 +173,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
 ```
 
 ### Security Considerations
+- **Localhost Only:** The web UI has no login, so `validate()` in `internal/config/config.go` rejects any `server.host` that `IsLoopbackHost` does not accept (`localhost`, 127.0.0.0/8, `::1`), including empty and `0.0.0.0`. The app deliberately provides no authentication or HTTPS; remote use goes through an SSH tunnel
 - **API Tokens:** Use Fastmail API tokens for secure authentication
 - **Local Processing:** All similarity calculations happen locally
 - **Minimal Permissions:** Only requires read access to inbox and write to archive
@@ -326,7 +327,7 @@ golangci-lint run
    ```yaml
    server:
      port: 8080
-     host: "0.0.0.0"  # For external access
+     host: "localhost"  # Only loopback is accepted; see Remote Access below
    jmap:
      api_token: "production-api-token"
    dry_run: false      # Enable real operations
@@ -337,7 +338,14 @@ golangci-lint run
    ./mailboxzero -config production-config.yaml
    ```
 
+### Remote Access
+The server only listens on localhost and has no login. To use it from another machine, forward the port over SSH and open http://localhost:8080 locally:
+```bash
+ssh -L 8080:localhost:8080 user@server
+```
+
 ### Docker Deployment (Future Enhancement)
+The server only binds to loopback, so a published container port (`-p 8080:8080`) cannot reach it. Run such a container with host networking (`--network host`, Linux) instead.
 ```dockerfile
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
@@ -359,6 +367,7 @@ CMD ["./mailboxzero"]
 2. **Memory Usage:** Loads all emails into memory for processing
 3. **No Persistent Storage:** No database for tracking operations
 4. **Bearer Token Authentication:** Uses API tokens instead of OAuth2
+5. **Local Access Only:** No login or HTTPS; the server only binds to loopback, so remote use needs an SSH tunnel
 
 ### Potential Enhancements
 1. **Multi-Account Support:** Support multiple email accounts

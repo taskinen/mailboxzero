@@ -2,7 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,6 +47,14 @@ func (c *Config) validate() error {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}
 
+	// The web UI has no login, so it must only be reachable from this
+	// machine. An empty host or 0.0.0.0 would listen on every interface.
+	if !IsLoopbackHost(c.Server.Host) {
+		return fmt.Errorf("server host %q is not allowed: use localhost, 127.0.0.1 or ::1 "+
+			"(Mailbox Zero has no login, so it only listens on this machine; "+
+			"use an SSH tunnel for remote access)", c.Server.Host)
+	}
+
 	// In mock mode, JMAP credentials are not required
 	if !c.MockMode {
 		if c.JMAP.Endpoint == "" {
@@ -63,5 +74,16 @@ func (c *Config) validate() error {
 }
 
 func (c *Config) GetServerAddr() string {
-	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
+	return net.JoinHostPort(c.Server.Host, strconv.Itoa(c.Server.Port))
+}
+
+// IsLoopbackHost reports whether host names the local machine only:
+// "localhost" or a loopback IP address (127.0.0.0/8, ::1). host is a bare
+// host name or IP, without a port or IPv6 brackets.
+func IsLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
