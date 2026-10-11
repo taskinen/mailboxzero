@@ -176,7 +176,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
 
 ### GET /api/emails
 - **Purpose:** Retrieve inbox emails (paginated)
-- **Query Parameters:** `limit` (default 100) and `offset` (default 0)
+- **Query Parameters:** `limit` (default 100, capped at 500, the largest page size the UI offers) and `offset` (default 0)
 - **Response:** JSON object `{ "emails": [...], "totalCount": N }` (`InboxInfo`)
 - **Email Fields:** ID, subject, from, preview, receivedAt, bodyValues
 
