@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -89,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 
 	r.HandleFunc("/", s.handleIndex).Methods("GET")
 	r.HandleFunc("/api/emails", s.handleGetEmails).Methods("GET")
+	r.HandleFunc("/api/emails/{id}", s.handleGetEmail).Methods("GET")
 	r.HandleFunc("/api/similar", s.handleFindSimilar).Methods("POST")
 	r.HandleFunc("/api/archive", s.handleArchive).Methods("POST")
 	r.HandleFunc("/api/unarchive", s.handleUnarchive).Methods("POST")
@@ -167,6 +169,26 @@ func (s *Server) handleGetEmails(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(inboxInfo); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleGetEmail returns one email with its bodies. Inbox listings leave the
+// bodies out, so the UI fetches them here when it previews an email.
+func (s *Server) handleGetEmail(w http.ResponseWriter, r *http.Request) {
+	email, err := s.jmapClient.GetEmail(mux.Vars(r)["id"])
+	if errors.Is(err, jmap.ErrEmailNotFound) {
+		http.Error(w, "Email not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get email: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(email); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}

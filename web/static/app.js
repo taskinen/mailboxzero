@@ -756,7 +756,31 @@ class MailboxZero {
         this.loadPreviewBody(email);
     }
 
-    loadPreviewBody(email) {
+    async loadPreviewBody(email) {
+        // Inbox listings leave the bodies out to stay small. Fetch the full
+        // email the first time it is previewed and keep its bodies on the
+        // email object for the next time. On failure, fall back to the
+        // preview text below and try again on the next hover.
+        if (!email.bodyValues) {
+            try {
+                const response = await fetch(`/api/emails/${encodeURIComponent(email.id)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const full = await response.json();
+                email.bodyValues = full.bodyValues || {};
+                email.textBody = full.textBody;
+                email.htmlBody = full.htmlBody;
+            } catch (error) {
+                console.error('Error loading email body:', error);
+            }
+
+            // The pointer may have moved on (or left) while the body loaded.
+            if (this.currentPreviewEmail !== email) {
+                return;
+            }
+        }
+
         let bodyContent = '';
         
         // First try to find text body content using textBody structure

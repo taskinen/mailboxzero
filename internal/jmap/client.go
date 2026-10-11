@@ -18,6 +18,7 @@ type JMAPClient interface {
 	GetInboxEmailsPaginated(limit, offset int) ([]Email, error)
 	GetInboxEmailsWithCount(limit int) (*InboxInfo, error)
 	GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo, error)
+	GetEmail(emailID string) (*Email, error)
 	ArchiveEmails(emailIDs []string, dryRun bool) error
 	UnarchiveEmails(emailIDs []string, dryRun bool) error
 }
