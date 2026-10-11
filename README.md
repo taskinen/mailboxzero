@@ -207,6 +207,14 @@ go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 ```
 
+End-to-end browser tests live in `e2e/` and use [Playwright](https://playwright.dev/) with your installed Google Chrome. They start the server in mock mode on port 18080:
+
+```bash
+cd e2e
+npm ci
+npx playwright test
+```
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

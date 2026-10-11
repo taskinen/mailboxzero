@@ -1,0 +1,16 @@
+# Mailbox Zero configuration for the end-to-end tests.
+# Mock mode never contacts Fastmail, so dry_run can safely be false here:
+# archiving then really removes emails from the in-memory sample inbox,
+# which is what the tests need to exercise the post-archive flows.
+
+server:
+  port: 18080
+  host: "localhost"
+
+jmap:
+  endpoint: ""
+  api_token: ""
+
+dry_run: false
+default_similarity: 60
+mock_mode: true

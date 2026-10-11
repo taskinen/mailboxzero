@@ -267,6 +267,7 @@ class MailboxZero {
             await response.json();
             this.hideArchiveModal();
             this.lastArchivedIds = emailIds;
+            this.clearArchivedSelection(emailIds);
             this.showArchiveStatus(emailIds.length);
             this.loadEmails(); // Refresh inbox
             this.clearResults(); // Clear similar emails
@@ -295,6 +296,7 @@ class MailboxZero {
 
             await response.json();
             this.lastArchivedIds = emailIds;
+            this.clearArchivedSelection(emailIds);
             this.showArchiveStatus(emailIds.length);
             await this.loadEmails();
             await this.findSimilarEmails();
@@ -309,6 +311,15 @@ class MailboxZero {
         this.archiveStatusText.classList.remove('glow');
         this.archiveUndoBtn.style.display = '';
         this.archiveStatus.style.display = '';
+    }
+
+    // Forget the inbox selection once its email has been archived, so the
+    // next Find Similar searches the whole inbox instead of asking the server
+    // for an email that is no longer there.
+    clearArchivedSelection(emailIds) {
+        if (this.selectedEmailId && emailIds.includes(this.selectedEmailId)) {
+            this.selectedEmailId = null;
+        }
     }
 
     async undoArchive() {
