@@ -1,6 +1,7 @@
 package jmap
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -485,5 +486,50 @@ func TestMockClient_GenerateSampleEmails(t *testing.T) {
 
 	if !foundGroup {
 		t.Error("generateSampleEmails() should create groups of similar emails from same senders")
+	}
+}
+
+// TestMockClient_ConcurrentAccess archives, unarchives and reads the inbox
+// from many goroutines at once, as concurrent HTTP handlers do in mock mode.
+// Run with -race (as CI does) to catch unsynchronized access to the
+// archived-email state.
+func TestMockClient_ConcurrentAccess(t *testing.T) {
+	client := NewMockClient()
+	emails, err := client.GetInboxEmails(100)
+	if err != nil {
+		t.Fatalf("GetInboxEmails() unexpected error = %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for _, email := range emails {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if err := client.ArchiveEmails([]string{email.ID}, false); err != nil {
+				t.Errorf("ArchiveEmails() unexpected error = %v", err)
+			}
+			if err := client.UnarchiveEmails([]string{email.ID}, false); err != nil {
+				t.Errorf("UnarchiveEmails() unexpected error = %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if _, err := client.GetInboxEmailsWithCountPaginated(10, 0); err != nil {
+				t.Errorf("GetInboxEmailsWithCountPaginated() unexpected error = %v", err)
+			}
+			if _, err := client.GetInboxEmailsPaginated(10, 5); err != nil {
+				t.Errorf("GetInboxEmailsPaginated() unexpected error = %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Every email was archived and then unarchived again.
+	info, err := client.GetInboxEmailsWithCount(100)
+	if err != nil {
+		t.Fatalf("GetInboxEmailsWithCount() unexpected error = %v", err)
+	}
+	if info.TotalCount != len(emails) {
+		t.Errorf("inbox count after concurrent archive/unarchive = %d, want %d", info.TotalCount, len(emails))
 	}
 }
