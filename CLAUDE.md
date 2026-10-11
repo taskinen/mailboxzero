@@ -157,6 +157,7 @@ mailboxzero/
 3. **Error Handling:** User-friendly error messages
 4. **Accessibility:** Keyboard navigation and screen reader support
 5. **Performance:** Efficient API calls and client-side caching
+6. **Empty Inbox:** An empty inbox shows "Inbox zero!" instead of a blank list, pagination never shows "Page 1 of 0", and a last page that was emptied in the meantime falls back to the new last page (`loadEmails()` in `app.js`)
 
 ## Configuration Details
 
