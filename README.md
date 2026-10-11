@@ -2,7 +2,6 @@
 
 [![Test Suite](https://github.com/taskinen/mailboxzero/actions/workflows/test.yml/badge.svg)](https://github.com/taskinen/mailboxzero/actions/workflows/test.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/taskinen/mailboxzero)](https://goreportcard.com/report/github.com/taskinen/mailboxzero)
 [![Made with Go](https://img.shields.io/badge/Made%20with-Go-1f425f.svg)](https://go.dev/)
 
 A Go-based web application that helps you clean up your Fastmail inbox by finding and archiving similar emails using JMAP protocol.
