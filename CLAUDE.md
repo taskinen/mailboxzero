@@ -117,6 +117,7 @@ mailboxzero/
   - JSON API responses
   - Error handling and logging
   - Static file serving
+  - `Handler()` builds the router (testable end to end); `Start()` serves it through `newHTTPServer`, which sets timeouts: 10 s to read headers, 30 s to read the request, 2 min to write the response (Find Similar and archive can make two 30 s JMAP calls), 2 min idle
   - Inbox cache for `/api/similar`: the 1000-email JMAP fetch is cached in-process for 60 seconds (`inboxCacheTTL`) and invalidated by `handleArchive`/`handleUnarchive`, even when they fail (JMAP can reject some emails while moving the rest), so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP
 
 #### 5. Frontend Interface (`web/`)
