@@ -35,33 +35,6 @@ func setupTestServer(t *testing.T) *Server {
 	// Use mock JMAP client
 	mockClient := jmap.NewMockClient()
 
-	// Create temporary template for testing
-	templateContent := `<!DOCTYPE html>
-<html>
-<head><title>Test</title></head>
-<body>
-<h1>Mailbox Zero</h1>
-{{if .DryRun}}<div>DRY RUN MODE</div>{{end}}
-</body>
-</html>`
-
-	// Create temp directory with proper web/templates structure
-	tmpDir := t.TempDir()
-	templatePath := tmpDir + "/web/templates"
-	if err := os.MkdirAll(templatePath, 0755); err != nil {
-		t.Fatalf("Failed to create template directory: %v", err)
-	}
-
-	templateFile := templatePath + "/index.html"
-	if err := os.WriteFile(templateFile, []byte(templateContent), 0644); err != nil {
-		t.Fatalf("Failed to write template file: %v", err)
-	}
-
-	// Change working directory temporarily
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	t.Cleanup(func() { os.Chdir(oldWd) })
-
 	server, err := New(cfg, mockClient)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -85,15 +58,6 @@ func TestNew(t *testing.T) {
 
 	mockClient := jmap.NewMockClient()
 
-	// Create temporary template with proper structure
-	tmpDir := t.TempDir()
-	os.MkdirAll(tmpDir+"/web/templates", 0755)
-	os.WriteFile(tmpDir+"/web/templates/index.html", []byte("<html></html>"), 0644)
-
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
-
 	server, err := New(cfg, mockClient)
 	if err != nil {
 		t.Errorf("New() unexpected error = %v", err)
@@ -116,19 +80,42 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestNew_TemplateError(t *testing.T) {
-	cfg := &config.Config{}
-	mockClient := jmap.NewMockClient()
+// The page and its static files are built into the binary, so the server
+// works whatever the working directory is.
+func TestNew_FromAnyDirectory(t *testing.T) {
+	appJS, err := os.ReadFile("../../web/static/app.js")
+	if err != nil {
+		t.Fatalf("failed to read app.js: %v", err)
+	}
+	t.Chdir(t.TempDir())
 
-	// Don't create any template files
-	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	server, err := New(&config.Config{DefaultSimilarity: 60}, jmap.NewMockClient())
+	if err != nil {
+		t.Fatalf("New() from another directory: %v", err)
+	}
 
-	_, err := New(cfg, mockClient)
-	if err == nil {
-		t.Error("New() expected error for missing templates but got none")
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/", want: "Mailbox Zero"},
+		{path: "/static/app.js", want: string(appJS)},
+		{path: "/static/style.css", want: ".email-item"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Host = "localhost:8080"
+			w := httptest.NewRecorder()
+			server.Handler().ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
+			}
+			if !strings.Contains(w.Body.String(), tt.want) {
+				t.Errorf("%s does not contain %.40q", tt.path, tt.want)
+			}
+		})
 	}
 }
 
@@ -773,8 +760,13 @@ func TestHandleIndex_WithPageData(t *testing.T) {
 	}
 
 	// Verify it's HTML
-	if !strings.Contains(body, "<html>") || !strings.Contains(body, "</html>") {
+	if !strings.Contains(body, "<html") || !strings.Contains(body, "</html>") {
 		t.Error("handleIndex() should return HTML content")
+	}
+
+	// The slider starts at the configured similarity
+	if !strings.Contains(body, `value="75"`) {
+		t.Error("handleIndex() should render the default similarity")
 	}
 }
 
@@ -983,19 +975,6 @@ func setupCountingTestServer(t *testing.T) (*Server, *countingJMAPClient) {
 
 	counter := &countingJMAPClient{JMAPClient: jmap.NewMockClient()}
 
-	tmpDir := t.TempDir()
-	templatePath := tmpDir + "/web/templates"
-	if err := os.MkdirAll(templatePath, 0755); err != nil {
-		t.Fatalf("Failed to create template directory: %v", err)
-	}
-	if err := os.WriteFile(templatePath+"/index.html", []byte("<html></html>"), 0644); err != nil {
-		t.Fatalf("Failed to write template file: %v", err)
-	}
-
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	t.Cleanup(func() { os.Chdir(oldWd) })
-
 	server, err := New(cfg, counter)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -1111,19 +1090,6 @@ func TestGetInboxForSimilarity_ErrorNotCached(t *testing.T) {
 		JMAPClient: jmap.NewMockClient(),
 		err:        errors.New("jmap transient failure"),
 	}
-
-	tmpDir := t.TempDir()
-	templatePath := tmpDir + "/web/templates"
-	if err := os.MkdirAll(templatePath, 0755); err != nil {
-		t.Fatalf("Failed to create template directory: %v", err)
-	}
-	if err := os.WriteFile(templatePath+"/index.html", []byte("<html></html>"), 0644); err != nil {
-		t.Fatalf("Failed to write template file: %v", err)
-	}
-
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	t.Cleanup(func() { os.Chdir(oldWd) })
 
 	server, err := New(cfg, failing)
 	if err != nil {

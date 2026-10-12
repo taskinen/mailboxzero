@@ -77,6 +77,8 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 
 3. The application will display a warning banner when in dry run mode
 
+To build a single binary instead, run `go build -o mailboxzero .` The web page is built into it, so you can run it from any directory: `./mailboxzero -config /path/to/config.yaml`.
+
 ### Mock Mode (no Fastmail account required)
 
 For development, testing, or demos you can run against built-in sample data instead of a real Fastmail inbox:
@@ -185,6 +187,7 @@ mailboxzero/
 │   ├── server/            # Web server and API handlers
 │   └── similarity/        # Email similarity algorithms
 └── web/
+    ├── web.go             # Builds templates and static files into the binary
     ├── templates/         # HTML templates
     └── static/           # CSS and JavaScript files
 ```

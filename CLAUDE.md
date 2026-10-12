@@ -18,7 +18,7 @@ Mailbox Zero is a Go-based web application that helps users clean up their Fastm
 - **Email Protocol:** JMAP (JSON Meta Application Protocol)
 - **Email Provider:** Fastmail
 - **Configuration:** YAML
-- **Templates:** Go HTML templates
+- **Templates:** Go HTML templates, built into the binary with `embed` together with the static files
 
 ### Project Structure
 ```
@@ -59,6 +59,7 @@ mailboxzero/
 │       ├── similarity.go       # Fuzzy matching algorithms
 │       └── similarity_test.go
 └── web/
+    ├── web.go                  # Embeds templates/ and static/ into the binary
     ├── templates/
     │   └── index.html          # Main application template
     └── static/
@@ -115,7 +116,7 @@ mailboxzero/
   - `POST /api/unarchive` - Move previously archived emails back to the inbox (powers the Undo button)
   - `POST /api/clear` - Clear results
 - **Features:**
-  - Template rendering with data injection
+  - Template rendering with data injection, from the files `web/web.go` embeds (the binary runs from any directory)
   - JSON API responses
   - Error handling and logging
   - Static file serving
@@ -126,6 +127,7 @@ mailboxzero/
 - **Template:** `index.html` - Responsive dual-pane layout
 - **Styles:** `style.css` - Modern CSS with mobile responsiveness
 - **JavaScript:** `app.js` - Single-page application logic
+- **Embedding:** `web.go` builds `templates/` and `static/` into the binary, so after editing them restart the server (`go run` rebuilds)
 - **Features:**
   - Real-time similarity threshold adjustment
   - Email selection and multi-select capabilities
@@ -250,7 +252,7 @@ go run main.go
 # Run with custom config
 go run main.go -config custom-config.yaml
 
-# Build for production
+# Build for production (a single binary that includes the web page)
 go build -o mailboxzero main.go
 ```
 
@@ -323,7 +325,7 @@ golangci-lint run
 ## Deployment Instructions
 
 ### Production Deployment
-1. **Build Binary:**
+1. **Build Binary:** the page and static files are built in, so the binary runs from any directory
    ```bash
    go build -o mailboxzero main.go
    ```
@@ -366,7 +368,6 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/mailboxzero .
-COPY --from=builder /app/web ./web
 CMD ["./mailboxzero"]
 ```
 
