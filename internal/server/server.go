@@ -16,6 +16,7 @@ import (
 	"github.com/taskinen/mailboxzero/internal/config"
 	"github.com/taskinen/mailboxzero/internal/jmap"
 	"github.com/taskinen/mailboxzero/internal/similarity"
+	"github.com/taskinen/mailboxzero/web"
 
 	"github.com/gorilla/mux"
 )
@@ -60,7 +61,7 @@ type PageData struct {
 }
 
 func New(cfg *config.Config, jmapClient jmap.JMAPClient) (*Server, error) {
-	templates, err := template.ParseGlob("web/templates/*.html")
+	templates, err := template.ParseFS(web.Templates, "*.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
@@ -92,7 +93,7 @@ func (s *Server) Start() error {
 func (s *Server) Handler() http.Handler {
 	r := mux.NewRouter()
 
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServerFS(web.Static)))
 
 	r.HandleFunc("/", s.handleIndex).Methods("GET")
 	r.HandleFunc("/api/emails", s.handleGetEmails).Methods("GET")
