@@ -23,11 +23,11 @@
             </div>
             <div class="action-bar">
                 <div class="left-actions">
-                    <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
-                    <button id="find-similar-btn" class="btn btn-primary">Find Similar Emails</button>
+                    <button id="refresh-btn" class="btn btn-secondary" title="Refresh (R)" aria-keyshortcuts="R">Refresh</button>
+                    <button id="find-similar-btn" class="btn btn-primary" title="Find Similar Emails (F)" aria-keyshortcuts="F">Find Similar Emails</button>
                 </div>
                 <div class="right-actions">
-                    <button id="clear-results-btn" class="btn btn-secondary" disabled>Clear Results</button>
+                    <button id="clear-results-btn" class="btn btn-secondary" title="Clear Results (C)" aria-keyshortcuts="C" disabled>Clear Results</button>
                     <label class="preview-toggle-label">
                         <input type="checkbox" id="preview-toggle-checkbox" checked>
                         Previews
@@ -37,10 +37,10 @@
                         Select All
                     </label>
                     <button id="archive-btn" class="btn btn-danger" disabled>Archive Selected</button>
-                    <button id="archive-find-next-btn" class="btn btn-danger" disabled>Archive &amp; Find Next</button>
+                    <button id="archive-find-next-btn" class="btn btn-danger" title="Archive &amp; Find Next (A)" aria-keyshortcuts="A" disabled>Archive &amp; Find Next</button>
                     <div id="archive-status" class="archive-status" style="display: none;">
                         <span id="archive-status-text" class="archive-status-text"></span>
-                        <button id="archive-undo-btn" class="btn btn-secondary archive-status-undo">Undo</button>
+                        <button id="archive-undo-btn" class="btn btn-secondary archive-status-undo" title="Undo (U)" aria-keyshortcuts="U">Undo</button>
                     </div>
                 </div>
             </div>
