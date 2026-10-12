@@ -142,6 +142,7 @@ mailboxzero/
 4. **Visual Warnings:** Clear UI indicators when in dry run mode
 5. **API Token Authentication:** Secure authentication using Fastmail API tokens
 6. **Undo Archive:** After every successful archive, a status pill with an "Undo" button appears in the top-right of the action bar. Undo POSTs the last-archived IDs to `/api/unarchive`, which moves them back to the inbox. Undo does not refresh the similar-emails pane — the restored emails reappear on the next Refresh or Find Similar. After Undo, the status text changes to "Unarchived N e-mail(s)" with a glow animation (`undoGlow` in `style.css`).
+7. **Flagged Emails Stay Unselected:** In a group of similar emails, every email starts selected except those flagged in Fastmail (`$flagged` keyword), which show a ⚑ marker; unread emails (no `$seen`) show a blue dot. Select All still includes flagged emails
 
 ### ✅ Core Functionality
 1. **Dual-Pane Interface:** Inbox (left) and similar emails (right)
@@ -191,7 +192,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
 - **Purpose:** Retrieve inbox emails (paginated)
 - **Query Parameters:** `limit` (default 100, capped at 500, the largest page size the UI offers) and `offset` (default 0)
 - **Response:** JSON object `{ "emails": [...], "totalCount": N }` (`InboxInfo`)
-- **Email Fields:** ID, subject, from, preview, receivedAt (no bodies: `bodyValues` is `null`; see `GET /api/emails/{id}`)
+- **Email Fields:** ID, subject, from, preview, receivedAt, keywords (`$seen`, `$flagged`) (no bodies: `bodyValues` is `null`; see `GET /api/emails/{id}`)
 
 ### GET /api/emails/{id}
 - **Purpose:** Fetch one email with its text and HTML bodies, for the hover preview. Listings and `/api/similar` leave bodies out, and `app.js` (`loadPreviewBody()`) fetches them here the first time an email is previewed
