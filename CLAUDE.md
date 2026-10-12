@@ -136,7 +136,7 @@ mailboxzero/
   - Real-time similarity threshold adjustment
   - Email selection and multi-select capabilities
   - Modal confirmation dialogs
-  - Async API communication
+  - Async API communication. Inbox and Find Similar requests are numbered (`inboxRequest`, `similarRequest` in `app.js`), and an answer to a request that a newer one replaced (or that Clear Results cancelled) is ignored, since answers can arrive out of order
   - Responsive design for mobile/desktop
 
 ## Key Features Implemented

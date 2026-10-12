@@ -13,6 +13,12 @@ class MailboxZero {
         this.currentPage = 1;
         this.perPage = 100;
         this.totalPages = 1;
+
+        // The latest inbox and Find Similar requests. Answers can arrive out
+        // of order (say, after two quick clicks on Next), so an answer to an
+        // older request is ignored.
+        this.inboxRequest = 0;
+        this.similarRequest = 0;
         
         this.initializeElements();
         this.attachEventListeners();
@@ -178,6 +184,7 @@ class MailboxZero {
     }
 
     async loadEmails() {
+        const request = ++this.inboxRequest;
         try {
             this.showLoading(this.inboxList, 'Loading emails...');
             
@@ -190,6 +197,9 @@ class MailboxZero {
             }
             
             const inboxInfo = await response.json();
+            if (request !== this.inboxRequest) {
+                return;
+            }
             this.emails = inboxInfo.emails;
             this.totalInboxCount = inboxInfo.totalCount;
             
@@ -211,12 +221,16 @@ class MailboxZero {
             this.updateTitles();
             this.updatePaginationInfo();
         } catch (error) {
+            if (request !== this.inboxRequest) {
+                return;
+            }
             console.error('Error loading emails:', error);
             this.showError(this.inboxList, 'Failed to load emails. Please check your configuration.');
         }
     }
 
     async findSimilarEmails() {
+        const request = ++this.similarRequest;
         try {
             this.showLoading(this.similarList, 'Finding similar emails...');
             
@@ -241,7 +255,11 @@ class MailboxZero {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
-            this.similarEmails = await response.json();
+            const similarEmails = await response.json();
+            if (request !== this.similarRequest) {
+                return;
+            }
+            this.similarEmails = similarEmails;
             this.selectedSimilarEmails.clear();
             
             if (this.similarEmails.length === 0) {
@@ -258,6 +276,9 @@ class MailboxZero {
             
             this.updateControls();
         } catch (error) {
+            if (request !== this.similarRequest) {
+                return;
+            }
             console.error('Error finding similar emails:', error);
             this.showError(this.similarList, 'Failed to find similar emails.');
         }
@@ -399,6 +420,8 @@ class MailboxZero {
     }
 
     async clearResults() {
+        // Drop the answer to a Find Similar still on its way.
+        this.similarRequest++;
         try {
             await fetch('/api/clear', { method: 'POST' });
             this.similarEmails = [];
