@@ -140,7 +140,7 @@ mailboxzero/
 ## Key Features Implemented
 
 ### ✅ Safety Features
-1. **Dry Run Mode:** Default enabled, prevents actual email modifications
+1. **Dry Run Mode:** Default enabled, prevents actual email modifications. After an archive the status pill says "Dry run: would have archived N e-mail(s)" (amber, `dry-run` class) and offers no Undo, since nothing moved
 2. **Archive Only:** Never deletes emails, only moves to archive folder
 3. **Confirmation Dialogs:** Required before the standard "Archive Selected" write operation (the opt-in "Archive & Find Next" button intentionally skips it for rapid sweeping)
 4. **Visual Warnings:** Clear UI indicators when in dry run mode
