@@ -57,6 +57,8 @@ mailboxzero/
 │   │   └── server_test.go
 │   └── similarity/
 │       ├── similarity.go       # Fuzzy matching algorithms
+│       ├── candidates.go       # Index of the email pairs that could reach the threshold
+│       ├── candidates_test.go  # Checks the fast grouping against comparing every pair
 │       └── similarity_test.go
 └── web/
     ├── templates/
@@ -89,16 +91,17 @@ mailboxzero/
   - Comprehensive error handling
 
 #### 3. Similarity Engine (`internal/similarity/`)
-- **File:** `similarity.go`
+- **Files:** `similarity.go`, `candidates.go`
 - **Purpose:** Fuzzy matching tuned for newsletter/notification clustering
 - **Algorithm:**
   - **Sender Similarity (50% weight):** Structured ladder, not Levenshtein. Same full address → 1.0; same domain → 0.8 (suppressed for shared-ESP domains like `sendgrid.net` unless local parts also match); same registrable root domain (e.g. `mail.google.com` ↔ `accounts.google.com`) → 0.7; same non-generic display name → 0.6.
   - **Subject Similarity (30% weight):** `max(tokenJaccard, levenshtein)` over a normalized subject that has reply/forward prefixes (`Re:`, `Fwd:`, `[list]`) stripped. Token Jaccard filters a small stop-word set (`weekly`, `newsletter`, `update`, etc.) and requires both sides to have ≥2 surviving tokens before being credited; otherwise the score falls back to Levenshtein alone.
   - **Body Similarity (20% weight):** Jaccard similarity over normalized word tokens (length ≥ 3) extracted from JMAP's `preview` text (listings no longer fetch bodies; a body is only used if a preview is missing).
 - **Features:**
-  - Per-email features (`senderAddr`, `senderDomain`, `senderRoot`, `senderName`, `subjectNorm`, `subjectTokens`, `bodyTokens`) precomputed once per call so the inner pairwise compare avoids re-parsing senders or re-tokenizing strings
-  - Threshold-aware short-circuit: cheap-first ordering (sender → subject → body) bails out as soon as the partial score plus the maximum remaining contribution falls below `threshold`
-  - Single-link cluster expansion in `groupSimilarFeatures`: a candidate joins a cluster if it matches ANY existing member, not just the seed — important when the seed is an atypical member of an obvious group
+  - Per-email features (`senderAddr`, `senderDomain`, `senderRoot`, `senderName`, `subjectNorm`, `subjectRunes`, `subjectTokens`, `bodyTokens`) precomputed once per call so the inner pairwise compare avoids re-parsing senders or re-tokenizing strings
+  - Threshold-aware short-circuit: cheap-first ordering (sender → body → subject) bails out as soon as the partial score plus the maximum remaining contribution falls below `threshold`. The subject's Levenshtein distance is skipped when the length difference already rules it out, and stops early once it exceeds what the subject can afford; the score is still summed sender + subject + body, so results are unchanged
+  - Single-link cluster expansion in `groupSimilarFeatures`: a candidate joins a cluster if it matches ANY existing member, not just the seed — important when the seed is an atypical member of an obvious group. The expansion is breadth-first, so each member is compared once with each unclustered email
+  - Candidate index (`candidateIndex` in `candidates.go`): grouping only compares emails that could reach the threshold. Above 50% that means sharing a sender key (address, domain, root domain or display name, mirroring `senderSimilarity`); between 30% and 50% also sharing one of the rarest body tokens (prefix filtering on the body Jaccard that a pair from unrelated senders needs); at 30% and below every pair. `candidates_test.go` checks on random inboxes that the groups are identical to comparing every pair with the original scoring
   - String normalization (lowercase, punctuation-to-space, collapsed whitespace)
   - Public-suffix awareness for a small set of multi-label suffixes (`co.uk`, `github.io`, etc.)
   - Group-based and individual email matching

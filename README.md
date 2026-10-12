@@ -147,6 +147,8 @@ The application uses weighted scoring tuned for newsletter and notification clus
 
 Clusters are formed by single-link expansion: an email joins a group if it matches **any** existing member at the threshold, not just the seed — so a sibling that diverges from the group's first email but matches another member still gets pulled in.
 
+To stay fast on large inboxes, grouping only compares emails that could reach the threshold: above 50% only emails whose senders have something in common, and between 30% and 50% also emails whose preview text shares rare words. At 30% and below every pair is compared, so very low thresholds are slower on a big inbox.
+
 ## Security Considerations
 
 - **Localhost Only**: The web UI has no login, so the server only listens on this machine. `server.host` must be `localhost`, `127.0.0.1` or `::1`; anything else (including `0.0.0.0`) is rejected at startup. To use it from another machine, forward the port over SSH (`ssh -L 8080:localhost:8080 your-server`) and open http://localhost:8080 locally
