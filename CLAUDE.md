@@ -86,7 +86,7 @@ mailboxzero/
 - **Features:**
   - `JMAPClient` interface implemented by both the real `Client` and the in-memory `MockClient` (selected via `mock_mode` in config)
   - Session authentication with Bearer tokens
-  - Mailbox discovery (inbox, archive)
+  - Mailbox discovery (inbox, archive): the ids are looked up once and remembered (`mailboxIDs`), so an inbox page is one request (Mailbox/get for the inbox count, Email/query, Email/get) and an archive or undo is one Email/set. A failed request forgets them, and an account without an archive mailbox is looked up again each time
   - Email querying without bodies (summaries with JMAP's `preview`, `emailSummaryProperties`), including a paginated `GetInboxEmailsWithCountPaginated` used by the `/api/emails` endpoint; `GetEmail` fetches one email with its text and HTML bodies on demand for the hover preview, returning `ErrEmailNotFound` for an unknown id
   - Safe archive operations: archive and unarchive send an Email/set patch that changes only the inbox and archive memberships (`mailboxIds/<id>`), so any other mailbox or label the email is in is kept
   - Comprehensive error handling
