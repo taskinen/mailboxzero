@@ -275,11 +275,11 @@ class MailboxZero {
                 throw await this.errorFromResponse(response, 'archive');
             }
 
-            await response.json();
+            const result = await response.json();
             this.hideArchiveModal();
-            this.lastArchivedIds = emailIds;
+            this.lastArchivedIds = result.dryRun ? [] : emailIds;
             this.clearArchivedSelection(emailIds);
-            this.showArchiveStatus(emailIds.length);
+            this.showArchiveStatus(emailIds.length, result.dryRun);
             this.loadEmails(); // Refresh inbox
             this.clearResults(); // Clear similar emails
         } catch (error) {
@@ -306,10 +306,10 @@ class MailboxZero {
                 throw await this.errorFromResponse(response, 'archive');
             }
 
-            await response.json();
-            this.lastArchivedIds = emailIds;
+            const result = await response.json();
+            this.lastArchivedIds = result.dryRun ? [] : emailIds;
             this.clearArchivedSelection(emailIds);
-            this.showArchiveStatus(emailIds.length);
+            this.showArchiveStatus(emailIds.length, result.dryRun);
             await this.loadEmails();
             await this.findSimilarEmails();
         } catch (error) {
@@ -319,11 +319,15 @@ class MailboxZero {
         }
     }
 
-    showArchiveStatus(count) {
-        this.archiveStatusText.textContent = `Successfully archived ${count} e-mail(s)`;
+    // In a dry run the server moved nothing, so say so and offer no Undo.
+    showArchiveStatus(count, dryRun) {
+        this.archiveStatusText.textContent = dryRun
+            ? `Dry run: would have archived ${count} e-mail(s)`
+            : `Successfully archived ${count} e-mail(s)`;
         this.archiveStatusText.classList.remove('glow');
         this.archiveStatus.classList.remove('error');
-        this.archiveUndoBtn.style.display = '';
+        this.archiveStatus.classList.toggle('dry-run', Boolean(dryRun));
+        this.archiveUndoBtn.style.display = dryRun ? 'none' : '';
         this.archiveStatus.style.display = '';
     }
 
@@ -332,6 +336,7 @@ class MailboxZero {
     showArchiveError(message) {
         this.archiveStatusText.textContent = message;
         this.archiveStatusText.classList.remove('glow');
+        this.archiveStatus.classList.remove('dry-run');
         this.archiveStatus.classList.add('error');
         this.archiveUndoBtn.style.display = 'none';
         this.archiveStatus.style.display = '';

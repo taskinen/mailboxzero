@@ -408,6 +408,15 @@ header h1 {
     color: #c0392b;
 }
 
+.archive-status.dry-run {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+}
+
+.archive-status.dry-run .archive-status-text {
+    color: #856404;
+}
+
 @keyframes undoGlow {
     0%, 100% {
         text-shadow: 0 0 4px rgba(40, 167, 69, 0.5);
