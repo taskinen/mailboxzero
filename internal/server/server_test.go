@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/taskinen/mailboxzero/internal/config"
 	"github.com/taskinen/mailboxzero/internal/jmap"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -906,6 +908,111 @@ func TestHandleFindSimilar_BoundaryValues(t *testing.T) {
 	}
 }
 
+// bigInboxJMAPClient serves an inbox of any size and records the limit of
+// every inbox fetch. GetEmail finds any email in the inbox, or extra.
+type bigInboxJMAPClient struct {
+	jmap.JMAPClient
+	emails []jmap.Email
+	extra  []jmap.Email // emails GetEmail finds that inbox fetches leave out
+	limits []int
+}
+
+func (c *bigInboxJMAPClient) GetInboxEmails(limit int) ([]jmap.Email, error) {
+	c.limits = append(c.limits, limit)
+	return c.emails[:min(limit, len(c.emails))], nil
+}
+
+func (c *bigInboxJMAPClient) GetEmail(emailID string) (*jmap.Email, error) {
+	for _, emails := range [][]jmap.Email{c.emails, c.extra} {
+		for _, email := range emails {
+			if email.ID == emailID {
+				return &email, nil
+			}
+		}
+	}
+	return nil, jmap.ErrEmailNotFound
+}
+
+// unrelatedEmails returns n emails that match nothing, each from its own
+// sender.
+func unrelatedEmails(n int) []jmap.Email {
+	emails := make([]jmap.Email, n)
+	for i := range emails {
+		emails[i] = jmap.Email{
+			ID:      fmt.Sprintf("other-%d", i),
+			Subject: fmt.Sprintf("Topic %d", i),
+			From:    []jmap.EmailAddress{{Email: fmt.Sprintf("person%d@site%d.example", i, i)}},
+			Preview: fmt.Sprintf("message number %d", i),
+		}
+	}
+	return emails
+}
+
+func invoiceEmail(id string) jmap.Email {
+	return jmap.Email{
+		ID:      id,
+		Subject: "Your invoice is ready",
+		From:    []jmap.EmailAddress{{Name: "Acme Billing", Email: "billing@acme.example"}},
+		Preview: "Your monthly invoice from Acme is attached",
+	}
+}
+
+func TestHandleFindSimilar_SearchesWholeInbox(t *testing.T) {
+	inbox := unrelatedEmails(2500)
+	inbox[1500] = invoiceEmail("invoice-1")
+	inbox[2400] = invoiceEmail("invoice-2")
+	missing := invoiceEmail("invoice-3")
+
+	tests := []struct {
+		name    string
+		emailID string
+		want    int
+		wantIDs []string
+	}{
+		// Both are older than the newest 1000 emails.
+		{name: "targeted email", emailID: "invoice-1", want: http.StatusOK, wantIDs: []string{"invoice-1", "invoice-2"}},
+		{name: "largest group", want: http.StatusOK, wantIDs: []string{"invoice-1", "invoice-2"}},
+		// Not in the fetched inbox (newer than it), so fetched by itself.
+		{name: "targeted email outside the fetched inbox", emailID: "invoice-3", want: http.StatusOK, wantIDs: []string{"invoice-1", "invoice-2", "invoice-3"}},
+		{name: "targeted email that does not exist", emailID: "no-such-email", want: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &bigInboxJMAPClient{JMAPClient: jmap.NewMockClient(), emails: inbox, extra: []jmap.Email{missing}}
+			server := &Server{config: &config.Config{}, jmapClient: client}
+
+			body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 60, EmailID: tt.emailID})
+			req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			server.handleFindSimilar(w, req)
+
+			if w.Code != tt.want {
+				t.Fatalf("status = %d, want %d (body %q)", w.Code, tt.want, strings.TrimSpace(w.Body.String()))
+			}
+			if !slices.Equal(client.limits, []int{maxSimilarityEmails}) {
+				t.Errorf("inbox fetch limits = %v, want [%d]", client.limits, maxSimilarityEmails)
+			}
+			if tt.want != http.StatusOK {
+				return
+			}
+			var similar []jmap.Email
+			if err := json.NewDecoder(w.Body).Decode(&similar); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+			var ids []string
+			for _, email := range similar {
+				ids = append(ids, email.ID)
+			}
+			slices.Sort(ids)
+			if !slices.Equal(ids, tt.wantIDs) {
+				t.Errorf("similar emails = %v, want %v", ids, tt.wantIDs)
+			}
+		})
+	}
+}
+
 func TestHandleGetEmails_JSONEncoding(t *testing.T) {
 	server := setupTestServer(t)
 
@@ -957,7 +1064,7 @@ func TestServer_ConfigValues(t *testing.T) {
 }
 
 // countingJMAPClient wraps a JMAPClient and counts how many times the
-// full 1000-email inbox fetch used by handleFindSimilar is invoked.
+// inbox fetch used by handleFindSimilar is invoked.
 type countingJMAPClient struct {
 	jmap.JMAPClient
 	getInboxCalls int
@@ -1023,36 +1130,72 @@ func TestHandleFindSimilar_CachesInbox(t *testing.T) {
 	}
 }
 
-func TestHandleArchive_InvalidatesInboxCache(t *testing.T) {
-	server, counter := setupCountingTestServer(t)
-
-	body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
-	req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	server.handleFindSimilar(httptest.NewRecorder(), req)
-
-	if counter.getInboxCalls != 1 {
-		t.Fatalf("setup: expected 1 inbox fetch, got %d", counter.getInboxCalls)
+// An archive drops the archived emails from the cached inbox instead of
+// fetching the whole inbox again for the next search. A dry run moves
+// nothing, so it leaves the cache as it is.
+func TestHandleArchive_UpdatesInboxCache(t *testing.T) {
+	tests := []struct {
+		name        string
+		dryRun      bool
+		wantRemoved bool
+	}{
+		{name: "archive", dryRun: false, wantRemoved: true},
+		{name: "dry run", dryRun: true, wantRemoved: false},
 	}
 
-	// Archive an arbitrary id — under dry-run this is a no-op against the mock
-	// but the handler still invalidates the cache.
-	archiveBody, _ := json.Marshal(ArchiveRequest{EmailIDs: []string{"email-0-0"}})
-	archiveReq := httptest.NewRequest("POST", "/api/archive", bytes.NewReader(archiveBody))
-	archiveReq.Header.Set("Content-Type", "application/json")
-	archiveW := httptest.NewRecorder()
-	server.handleArchive(archiveW, archiveReq)
-	if archiveW.Code != http.StatusOK {
-		t.Fatalf("archive status = %v, want 200", archiveW.Code)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, counter := setupCountingTestServer(t)
+			server.config.DryRun = tt.dryRun
 
-	// Next /api/similar should re-fetch.
-	req2 := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
-	req2.Header.Set("Content-Type", "application/json")
-	server.handleFindSimilar(httptest.NewRecorder(), req2)
+			findSimilar := func() []jmap.Email {
+				t.Helper()
+				body, _ := json.Marshal(SimilarRequest{SimilarityThreshold: 75.0})
+				req := httptest.NewRequest("POST", "/api/similar", bytes.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				server.handleFindSimilar(w, req)
+				if w.Code != http.StatusOK {
+					t.Fatalf("find similar status = %v, want 200", w.Code)
+				}
+				var similar []jmap.Email
+				json.NewDecoder(w.Body).Decode(&similar)
+				return similar
+			}
 
-	if counter.getInboxCalls != 2 {
-		t.Errorf("expected 2 inbox fetches after archive, got %d", counter.getInboxCalls)
+			archived := []string{}
+			for _, email := range findSimilar() {
+				archived = append(archived, email.ID)
+			}
+			cachedBefore := len(server.inboxCache)
+
+			archiveBody, _ := json.Marshal(ArchiveRequest{EmailIDs: archived})
+			archiveReq := httptest.NewRequest("POST", "/api/archive", bytes.NewReader(archiveBody))
+			archiveReq.Header.Set("Content-Type", "application/json")
+			archiveW := httptest.NewRecorder()
+			server.handleArchive(archiveW, archiveReq)
+			if archiveW.Code != http.StatusOK {
+				t.Fatalf("archive status = %v, want 200", archiveW.Code)
+			}
+
+			again := findSimilar()
+			if counter.getInboxCalls != 1 {
+				t.Errorf("inbox fetched %d times, want once: the archive should update the cache, not drop it", counter.getInboxCalls)
+			}
+
+			wantCached := cachedBefore
+			if tt.wantRemoved {
+				wantCached -= len(archived)
+			}
+			if len(server.inboxCache) != wantCached {
+				t.Errorf("cache holds %d emails after archiving %d of %d, want %d", len(server.inboxCache), len(archived), cachedBefore, wantCached)
+			}
+			for _, email := range again {
+				if tt.wantRemoved && slices.Contains(archived, email.ID) {
+					t.Errorf("archived email %s is still found as similar", email.ID)
+				}
+			}
+		})
 	}
 }
 

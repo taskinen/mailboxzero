@@ -119,8 +119,9 @@ mailboxzero/
   - JSON API responses
   - Error handling and logging
   - Static file serving
-  - `Handler()` builds the router behind the request checks described under Security Considerations (testable end to end); `Start()` serves it through `newHTTPServer`, which sets timeouts: 10 s to read headers, 30 s to read the request, 2 min to write the response (Find Similar and archive can make two 30 s JMAP calls), 2 min idle
-  - Inbox cache for `/api/similar`: the 1000-email JMAP fetch is cached in-process for 60 seconds (`inboxCacheTTL`) and invalidated by `handleArchive`/`handleUnarchive`, even when they fail (JMAP can reject some emails while moving the rest), so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP
+  - `Handler()` builds the router behind the request checks described under Security Considerations (testable end to end); `Start()` serves it through `newHTTPServer`, which sets timeouts: 10 s to read headers, 30 s to read the request, 2 min to write the response (Find Similar fetches up to 10,000 emails in JMAP requests of up to 1000, each with a 30 s client timeout, then groups them), 2 min idle
+  - Find Similar searches the newest 10,000 inbox emails (`maxSimilarityEmails`), which the client fetches in pages of up to 1000 (or the server's `maxObjectsInGet`). A targeted email outside them (older, or newer than the cache) is fetched by itself with `GetEmail`
+  - Inbox cache for `/api/similar`: that fetch is cached in-process for 60 seconds (`inboxCacheTTL`). A successful archive removes the archived emails from the cache (a dry run leaves it), so successive "Find Similar" / "Archive & Find Next" calls don't re-pull from JMAP; a failed archive (JMAP can reject some emails while moving the rest) and any unarchive invalidate it
 
 #### 5. Frontend Interface (`web/`)
 - **Template:** `index.html` - Responsive dual-pane layout
@@ -206,6 +207,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
     "emailId": "optional-specific-email-id"
   }
   ```
+- **Searches:** the newest 10,000 inbox emails. A targeted `emailId` outside them is fetched by itself; HTTP 404 if it no longer exists
 - **Response:** JSON array of matching email objects; an empty array `[]` (never `null`) when nothing matches
 
 ### POST /api/archive

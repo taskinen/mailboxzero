@@ -94,7 +94,7 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 
 1. **Load Inbox**: The left pane shows your current inbox emails
 2. **Find Similar Emails**: 
-   - Click "Find Similar Emails" to find all similar email groups
+   - Click "Find Similar Emails" to find all similar email groups (it searches the newest 10,000 emails in your inbox)
    - Or select a specific email and click "Find Similar Emails" to find matches for that email
 3. **Adjust Similarity**: Use the percentage slider to fine-tune matching sensitivity
 4. **Review Matches**: Similar emails appear in the right pane with checkboxes
