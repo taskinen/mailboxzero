@@ -108,6 +108,19 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 - **Individual Selection**: Click on specific emails to select/deselect them
 - **Clear Results**: Remove all results from the right pane to start fresh
 
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `F` | Find Similar Emails |
+| `A` | Archive & Find Next (archives at once, without the confirmation dialog) |
+| `U` | Undo the last archive |
+| `R` | Refresh the inbox |
+| `C` | Clear Results |
+| `Escape` | Close the preview or the archive dialog |
+| `↑` / `↓` | Move between emails in a list |
+| `Enter` / `Space` | Choose the focused inbox email (to find emails similar to it) |
+
 ### Enabling Real Changes
 
 **⚠️ WARNING**: Only disable dry run mode when you're confident the application works correctly with your mailbox.

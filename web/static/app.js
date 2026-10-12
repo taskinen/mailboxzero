@@ -130,12 +130,7 @@ class MailboxZero {
                 this.hideEmailPreview();
             }
         });
-        document.addEventListener('keydown', (e) => {
-            // Hide on escape key
-            if (e.key === 'Escape') {
-                this.hideEmailPreview();
-            }
-        });
+        document.addEventListener('keydown', (e) => this.handleShortcut(e));
         
         // Add mouse tracking for preview popup
         this.previewPopup.addEventListener('mouseenter', () => {
@@ -494,7 +489,8 @@ class MailboxZero {
             return `
                 <div class="email-item ${isSelected ? 'selected' : ''}" 
                      data-email-id="${email.id}"
-                     data-with-checkbox="${withCheckboxes}">
+                     data-with-checkbox="${withCheckboxes}"
+                     ${withCheckboxes ? '' : `tabindex="0" role="button" aria-pressed="${isSelected}"`}>
                     ${withCheckboxes ? `
                         <input type="checkbox" class="email-checkbox" 
                                ${isChecked ? 'checked' : ''}>
@@ -566,6 +562,12 @@ class MailboxZero {
                 item.addEventListener('click', () => {
                     this.selectEmail(item.dataset.emailId);
                 });
+                item.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        this.selectEmail(item.dataset.emailId);
+                    }
+                });
             }
         });
     }
@@ -576,6 +578,7 @@ class MailboxZero {
             const selectedItem = this.inboxList.querySelector(`[data-email-id="${emailId}"]`);
             if (selectedItem) {
                 selectedItem.classList.remove('selected');
+                selectedItem.setAttribute('aria-pressed', 'false');
             }
             this.selectedEmailId = null;
             return;
@@ -584,13 +587,71 @@ class MailboxZero {
         // Remove selection from all items
         this.inboxList.querySelectorAll('.email-item').forEach(item => {
             item.classList.remove('selected');
+            item.setAttribute('aria-pressed', 'false');
         });
         
         // Add selection to clicked item
         const selectedItem = this.inboxList.querySelector(`[data-email-id="${emailId}"]`);
         if (selectedItem) {
             selectedItem.classList.add('selected');
+            selectedItem.setAttribute('aria-pressed', 'true');
             this.selectedEmailId = emailId;
+        }
+    }
+
+    // Keyboard shortcuts, so the sweep needs no mouse: F finds similar
+    // emails, A archives them and finds the next group, U undoes, R
+    // refreshes and C clears the results. ArrowUp and ArrowDown move between
+    // emails, and Escape closes the preview or the archive dialog.
+    handleShortcut(e) {
+        if (e.key === 'Escape') {
+            this.hideEmailPreview();
+            this.hideArchiveModal();
+            return;
+        }
+        if (e.ctrlKey || e.metaKey || e.altKey || this.archiveModal.style.display === 'block') {
+            return;
+        }
+        // Letters choose an option in a focused drop-down.
+        if (e.target.closest('select, textarea, input:not([type="checkbox"]):not([type="range"])')) {
+            return;
+        }
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            this.moveFocus(e);
+            return;
+        }
+
+        const buttons = {
+            f: this.findSimilarBtn,
+            a: this.archiveFindNextBtn,
+            u: this.archiveUndoBtn,
+            r: this.refreshBtn,
+            c: this.clearResultsBtn,
+        };
+        const button = buttons[e.key.toLowerCase()];
+        if (!button) {
+            return;
+        }
+        e.preventDefault();
+        // offsetParent is null while the button (or the Undo pill) is hidden.
+        if (!button.disabled && button.offsetParent !== null) {
+            button.click();
+        }
+    }
+
+    // Move the focus to the next or previous email in the same list: to the
+    // row itself in the inbox, to its checkbox among the similar emails.
+    moveFocus(e) {
+        const item = e.target.closest('.email-item');
+        if (!item) {
+            return;
+        }
+        const items = Array.from(item.parentElement.querySelectorAll('.email-item'));
+        const next = items[items.indexOf(item) + (e.key === 'ArrowDown' ? 1 : -1)];
+        if (next) {
+            e.preventDefault();
+            (next.querySelector('.email-checkbox') || next).focus();
         }
     }
 

@@ -157,7 +157,7 @@ mailboxzero/
 1. **Responsive Design:** Mobile and desktop optimized
 2. **Loading States:** Clear feedback during async operations
 3. **Error Handling:** User-friendly error messages. A failed archive or Undo shows the server's reason (each email JMAP rejected, and why) in a red status pill instead of an alert, and the inbox reloads because some emails may have moved (`showArchiveError()` in `app.js`)
-4. **Accessibility:** Keyboard navigation and screen reader support
+4. **Keyboard:** Shortcuts `F` (Find Similar), `A` (Archive & Find Next), `U` (Undo), `R` (Refresh), `C` (Clear Results) and `Escape` (close the preview or the archive dialog), handled by `handleShortcut()` in `app.js`. They are ignored in a drop-down, with Ctrl/Cmd/Alt, and while the archive dialog is open. The buttons show them in `title` and `aria-keyshortcuts`. Inbox rows are focusable buttons (`aria-pressed` when chosen): Enter or Space chooses one, and ArrowUp/ArrowDown move between inbox rows or between the checkboxes of the similar emails
 5. **Performance:** Efficient API calls and client-side caching
 6. **Empty Inbox:** An empty inbox shows "Inbox zero!" instead of a blank list, pagination never shows "Page 1 of 0", and a last page that was emptied in the meantime falls back to the new last page (`loadEmails()` in `app.js`)
 
