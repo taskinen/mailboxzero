@@ -2,6 +2,7 @@ package similarity
 
 import (
 	"github.com/taskinen/mailboxzero/internal/jmap"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -19,6 +20,7 @@ type EmailGroup struct {
 type features struct {
 	email         jmap.Email
 	subjectNorm   string
+	subjectRunes  []rune // subjectNorm as runes, for Levenshtein
 	subjectTokens map[string]struct{}
 	senderAddr    string
 	senderDomain  string
@@ -76,51 +78,42 @@ func groupSimilarEmails(emails []jmap.Email, threshold float64) []EmailGroup {
 // the seed. This catches sibling emails that diverge from the seed but match
 // other members (e.g. four newsletters from one sender where one has a much
 // shorter subject than the rest).
+//
+// The expansion is breadth-first: each member is compared once with every
+// email not yet in a cluster, and only with the emails candidateIndex says
+// it could match.
 func groupSimilarFeatures(feats []features, threshold float64) []EmailGroup {
 	var groups []EmailGroup
 	processed := make([]bool, len(feats))
+	candidates := newCandidateIndex(feats, threshold)
 
 	for i := range feats {
 		if processed[i] {
 			continue
 		}
 
-		clusterIdx := []int{i}
 		clusterEmails := []jmap.Email{feats[i].email}
 		processed[i] = true
 
 		var simSum float64
 		var simCount int
 
-		// Repeat expansion passes until no new members join.
-		for {
-			added := false
-			for j := 0; j < len(feats); j++ {
+		queue := []int{i}
+		for len(queue) > 0 {
+			member := queue[0]
+			queue = queue[1:]
+			candidates.visit(member, func(j int) {
 				if processed[j] {
-					continue
+					return
 				}
-				var bestSim float64
-				for _, ci := range clusterIdx {
-					sim := similarityWithThreshold(feats[ci], feats[j], threshold)
-					if sim > bestSim {
-						bestSim = sim
-					}
-					if bestSim >= threshold {
-						break
-					}
-				}
-				if bestSim >= threshold {
-					clusterIdx = append(clusterIdx, j)
+				if sim := similarityWithThreshold(feats[member], feats[j], threshold); sim >= threshold {
+					queue = append(queue, j)
 					clusterEmails = append(clusterEmails, feats[j].email)
 					processed[j] = true
-					simSum += bestSim
+					simSum += sim
 					simCount++
-					added = true
 				}
-			}
-			if !added {
-				break
-			}
+			})
 		}
 
 		if len(clusterEmails) > 1 {
@@ -188,6 +181,7 @@ func precomputeOne(email jmap.Email) features {
 	return features{
 		email:         email,
 		subjectNorm:   subjectNorm,
+		subjectRunes:  []rune(subjectNorm),
 		subjectTokens: tokenizeSubject(subjectNorm),
 		senderAddr:    senderAddr,
 		senderDomain:  senderDomain,
@@ -210,16 +204,23 @@ func similarityWithThreshold(a, b features, threshold float64) float64 {
 		return 0
 	}
 
-	subjectSim := subjectSimilarity(a, b)
-	score += subjectSim * 0.3
-	if score+0.2 < threshold {
-		return 0
-	}
-
+	// The body is scored before the subject: Jaccard on token sets is much
+	// cheaper than the subject's Levenshtein distance, and it tells how much
+	// the subject has to make up. The score still adds sender, subject and
+	// body in that order.
 	var bodySim float64
 	if len(a.bodyTokens) > 0 && len(b.bodyTokens) > 0 {
 		bodySim = jaccardSimilarity(a.bodyTokens, b.bodyTokens)
 	}
+
+	// The least subject similarity that can still reach the threshold. The
+	// margin keeps rounding from ruling out a pair right at the threshold.
+	minSubject := (threshold-score-bodySim*0.2)/0.3 - 1e-9
+	subjectSim, ok := subjectSimilarityAtLeast(a, b, minSubject)
+	if !ok {
+		return 0
+	}
+	score += subjectSim * 0.3
 	score += bodySim * 0.2
 
 	return score
@@ -273,27 +274,55 @@ func senderSimilarity(a, b features) float64 {
 // also differ in filler. Token Jaccard handles that case. Both views are
 // computed on the prefix-stripped normalized form.
 func subjectSimilarity(a, b features) float64 {
+	score, _ := subjectSimilarityAtLeast(a, b, 0)
+	return score
+}
+
+// subjectSimilarityAtLeast returns subjectSimilarity(a, b) and true, or
+// false when the similarity is certainly below minScore. It skips the
+// Levenshtein distance when the difference in subject length already keeps
+// it below minScore, or below the token Jaccard (which then is the result).
+func subjectSimilarityAtLeast(a, b features, minScore float64) (float64, bool) {
 	aEmpty := a.subjectNorm == ""
 	bEmpty := b.subjectNorm == ""
 	if aEmpty && bEmpty {
-		return 1.0
+		return 1.0, 1.0 >= minScore
 	}
 	if aEmpty || bEmpty {
-		return 0.0
+		return 0.0, 0.0 >= minScore
 	}
-
-	score := normalizedStringSimilarity(a.subjectNorm, b.subjectNorm)
+	if a.subjectNorm == b.subjectNorm {
+		return 1.0, 1.0 >= minScore
+	}
 
 	// Only credit token Jaccard when both sides have enough surviving
 	// tokens to be meaningful. Otherwise a single shared word like
 	// "welcome" would trivially clear the threshold.
+	var jac float64
 	if len(a.subjectTokens) >= 2 && len(b.subjectTokens) >= 2 {
-		if jac := jaccardSimilarity(a.subjectTokens, b.subjectTokens); jac > score {
-			score = jac
-		}
+		jac = jaccardSimilarity(a.subjectTokens, b.subjectTokens)
 	}
 
-	return score
+	// The edit distance is at least the difference in length, which caps
+	// the Levenshtein similarity (computed as in normalizedStringSimilarity).
+	maxLen := float64(max(len(a.subjectNorm), len(b.subjectNorm)))
+	lengthDiff := len(a.subjectRunes) - len(b.subjectRunes)
+	if lengthDiff < 0 {
+		lengthDiff = -lengthDiff
+	}
+	if levCap := 1.0 - float64(lengthDiff)/maxLen; levCap <= jac || levCap < minScore {
+		return jac, jac >= minScore
+	}
+
+	// Levenshtein only changes the result when it beats both the token
+	// Jaccard and minScore, so stop once the distance is too large for
+	// that. The margin keeps rounding from stopping one step too early.
+	limit := int(math.Floor((1.0-math.Max(jac, minScore))*maxLen + 1e-9))
+	score := 1.0 - float64(levenshteinRunes(a.subjectRunes, b.subjectRunes, limit))/maxLen
+	if jac > score {
+		score = jac
+	}
+	return score, score >= minScore
 }
 
 func stringSimilarity(s1, s2 string) float64 {
@@ -371,6 +400,12 @@ func normalizeSubject(s string) string {
 
 func levenshteinDistance(s1, s2 string) int {
 	r1, r2 := []rune(s1), []rune(s2)
+	return levenshteinRunes(r1, r2, len(r1)+len(r2))
+}
+
+// levenshteinRunes returns the edit distance between r1 and r2, or some
+// value above limit as soon as the distance is certain to exceed limit.
+func levenshteinRunes(r1, r2 []rune, limit int) int {
 	column := make([]int, len(r1)+1)
 
 	for y := 1; y <= len(r1); y++ {
@@ -380,6 +415,8 @@ func levenshteinDistance(s1, s2 string) int {
 	for x := 1; x <= len(r2); x++ {
 		column[0] = x
 		lastkey := x - 1
+		// The smallest value in a column never decreases in the next one.
+		columnMin := x
 		for y := 1; y <= len(r1); y++ {
 			oldkey := column[y]
 			var incr int
@@ -389,6 +426,12 @@ func levenshteinDistance(s1, s2 string) int {
 
 			column[y] = min(column[y]+1, column[y-1]+1, lastkey+incr)
 			lastkey = oldkey
+			if column[y] < columnMin {
+				columnMin = column[y]
+			}
+		}
+		if columnMin > limit {
+			return columnMin
 		}
 	}
 
