@@ -247,9 +247,13 @@ class MailboxZero {
             if (this.similarEmails.length === 0) {
                 this.showEmpty(this.similarList, 'No similar emails found with the current similarity threshold.');
             } else {
-                this.similarEmails.forEach(email => this.selectedSimilarEmails.add(email.id));
+                // Flagged emails start unselected: a flag marks an email
+                // worth keeping, even when it looks like the rest.
+                this.similarEmails
+                    .filter(email => !this.isFlagged(email))
+                    .forEach(email => this.selectedSimilarEmails.add(email.id));
                 this.renderEmails(this.similarEmails, this.similarList, true);
-                this.selectAllCheckbox.checked = true;
+                this.updateSelectAllCheckbox();
             }
             
             this.updateControls();
@@ -481,6 +485,27 @@ class MailboxZero {
         return 'Unknown sender';
     }
 
+    // JMAP keywords: $flagged marks a flagged email, and an email without
+    // $seen is unread.
+    isFlagged(email) {
+        return Boolean(email.keywords && email.keywords['$flagged']);
+    }
+
+    isUnread(email) {
+        return Boolean(email.keywords) && !email.keywords['$seen'];
+    }
+
+    statusMarkers(email) {
+        let markers = '';
+        if (this.isUnread(email)) {
+            markers += '<span class="unread-marker" title="Unread" aria-label="Unread" role="img"></span>';
+        }
+        if (this.isFlagged(email)) {
+            markers += '<span class="flag-marker" title="Flagged" aria-label="Flagged" role="img">⚑</span>';
+        }
+        return markers;
+    }
+
     renderEmails(emails, container, withCheckboxes) {
         // Determine which sort to use based on which container we're rendering to
         const sortBy = container === this.inboxList ? this.inboxSortBy : this.similarSortBy;
@@ -497,7 +522,7 @@ class MailboxZero {
             const isChecked = withCheckboxes && this.selectedSimilarEmails.has(email.id);
             
             return `
-                <div class="email-item ${isSelected ? 'selected' : ''}" 
+                <div class="email-item ${isSelected ? 'selected' : ''} ${this.isUnread(email) ? 'unread' : ''} ${this.isFlagged(email) ? 'flagged' : ''}"
                      data-email-id="${email.id}"
                      data-with-checkbox="${withCheckboxes}">
                     ${withCheckboxes ? `
@@ -505,7 +530,7 @@ class MailboxZero {
                                ${isChecked ? 'checked' : ''}>
                     ` : ''}
                     <div class="email-content">
-                        <div class="email-subject">${this.escapeHtml(email.subject || '(No subject)')}</div>
+                        <div class="email-subject">${this.statusMarkers(email)}${this.escapeHtml(email.subject || '(No subject)')}</div>
                         <div class="email-from">${this.escapeHtml(fromName)}</div>
                         <div class="email-preview">${this.escapeHtml(email.preview || '')}</div>
                     </div>

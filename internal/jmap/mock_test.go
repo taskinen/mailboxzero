@@ -2,6 +2,7 @@ package jmap
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -586,5 +587,35 @@ func TestMockClient_BodiesOnlyFromGetEmail(t *testing.T) {
 
 	if _, err := client.GetEmail("no-such-email"); !errors.Is(err, ErrEmailNotFound) {
 		t.Errorf("GetEmail(no-such-email) error = %v, want ErrEmailNotFound", err)
+	}
+}
+
+// The sample inbox has unread and flagged emails, so mock mode shows both
+// markers: the newest email from each sender is unread, and email-1-1 (in the
+// Stripe group) is flagged.
+func TestMockClient_SampleKeywords(t *testing.T) {
+	emails, err := NewMockClient().GetInboxEmails(100)
+	if err != nil {
+		t.Fatalf("GetInboxEmails() unexpected error = %v", err)
+	}
+
+	var flagged, unread []string
+	for _, email := range emails {
+		if email.Keywords == nil {
+			t.Fatalf("email %s has no keywords", email.ID)
+		}
+		if email.Keywords["$flagged"] {
+			flagged = append(flagged, email.ID)
+		}
+		if !email.Keywords["$seen"] {
+			unread = append(unread, email.ID)
+		}
+	}
+
+	if !slices.Equal(flagged, []string{"email-1-1"}) {
+		t.Errorf("flagged emails = %v, want [email-1-1]", flagged)
+	}
+	if len(unread) != 10 || !slices.Contains(unread, "email-1-3") || slices.Contains(unread, "email-1-2") {
+		t.Errorf("unread emails = %v, want the newest of each of the 10 senders", unread)
 	}
 }

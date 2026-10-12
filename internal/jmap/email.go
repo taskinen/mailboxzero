@@ -569,6 +569,16 @@ func parseEmail(data map[string]interface{}) Email {
 		}
 	}
 
+	// Keywords such as $seen (read) and $flagged.
+	if keywords, ok := data["keywords"].(map[string]interface{}); ok {
+		email.Keywords = make(map[string]bool, len(keywords))
+		for keyword, set := range keywords {
+			if isSet, _ := set.(bool); isSet {
+				email.Keywords[keyword] = true
+			}
+		}
+	}
+
 	// Parse textBody structure first
 	if textBodyData, ok := data["textBody"].([]interface{}); ok {
 		for _, part := range textBodyData {

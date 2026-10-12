@@ -213,6 +213,16 @@ func (m *MockClient) generateSampleEmails() {
 				},
 			}
 
+			// The newest email from each sender is unread, and one Stripe
+			// email is flagged, so mock mode shows both.
+			email.Keywords = map[string]bool{}
+			if j < numSimilar-1 {
+				email.Keywords["$seen"] = true
+			}
+			if i == 1 && j == 1 {
+				email.Keywords["$flagged"] = true
+			}
+
 			// Add slight variations to subjects for some emails
 			if j > 0 {
 				variations := []string{
@@ -236,6 +246,7 @@ func (m *MockClient) generateSampleEmails() {
 			From:       []EmailAddress{{Email: "welcome@newservice.com", Name: "New Service"}},
 			Preview:    "Thanks for signing up! Here's how to get started.",
 			ReceivedAt: baseTime.Add(48 * time.Hour),
+			Keywords:   map[string]bool{"$seen": true},
 			BodyValues: map[string]BodyValue{
 				"text": {Value: "Welcome! We're excited to have you on board."},
 			},
@@ -246,6 +257,7 @@ func (m *MockClient) generateSampleEmails() {
 			From:       []EmailAddress{{Email: "events@techconf.com", Name: "Tech Conference"}},
 			Preview:    "You're invited to speak at our upcoming conference.",
 			ReceivedAt: baseTime.Add(72 * time.Hour),
+			Keywords:   map[string]bool{"$seen": true},
 			BodyValues: map[string]BodyValue{
 				"text": {Value: "We'd love to have you present at our conference."},
 			},

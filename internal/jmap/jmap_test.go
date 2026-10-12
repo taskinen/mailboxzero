@@ -829,6 +829,51 @@ func TestParseEmail_InvalidReceivedAt(t *testing.T) {
 	}
 }
 
+// Listings request keywords; the UI marks unread emails (no $seen) and
+// leaves flagged ones unselected.
+func TestParseEmail_Keywords(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]interface{}
+		want map[string]bool
+	}{
+		{
+			name: "read and flagged",
+			data: map[string]interface{}{"id": "e1", "keywords": map[string]interface{}{"$seen": true, "$flagged": true}},
+			want: map[string]bool{"$seen": true, "$flagged": true},
+		},
+		{
+			name: "unread",
+			data: map[string]interface{}{"id": "e2", "keywords": map[string]interface{}{}},
+			want: map[string]bool{},
+		},
+		{
+			name: "keyword set to false",
+			data: map[string]interface{}{"id": "e3", "keywords": map[string]interface{}{"$seen": true, "$flagged": false}},
+			want: map[string]bool{"$seen": true},
+		},
+		{
+			name: "no keywords property",
+			data: map[string]interface{}{"id": "e4"},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseEmail(tt.data).Keywords
+			if (got == nil) != (tt.want == nil) || len(got) != len(tt.want) {
+				t.Fatalf("parseEmail().Keywords = %v, want %v", got, tt.want)
+			}
+			for keyword := range tt.want {
+				if !got[keyword] {
+					t.Errorf("parseEmail().Keywords = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
 func TestInboxInfo(t *testing.T) {
 	info := &InboxInfo{
 		Emails: []Email{

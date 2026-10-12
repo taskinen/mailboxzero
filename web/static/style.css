@@ -282,6 +282,21 @@ header h1 {
     line-height: 1.4;
 }
 
+.unread-marker {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background-color: #2196f3;
+    vertical-align: middle;
+}
+
+.flag-marker {
+    margin-right: 6px;
+    color: #e67e22;
+}
+
 .email-from {
     font-size: 0.9em;
     color: #666;

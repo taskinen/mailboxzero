@@ -27,6 +27,7 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 - **Confirmation Dialog**: Required before archiving via "Archive Selected" (the opt-in "Archive & Find Next" button intentionally skips it)
 - **Undo Archive**: An "Undo" button appears after each successful archive and moves the affected messages back to the inbox via `POST /api/unarchive`
 - **Visual Warnings**: Clear indication when in dry run mode
+- **Flagged Emails Stay**: Emails you flagged in Fastmail start unselected in a group of similar emails, so archiving the group leaves them in your inbox unless you select them
 
 ## Setup
 
@@ -100,7 +101,7 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
    - Or select a specific email and click "Find Similar Emails" to find matches for that email
 3. **Adjust Similarity**: Use the percentage slider to fine-tune matching sensitivity
 4. **Review Matches**: Similar emails appear in the right pane with checkboxes
-5. **Select for Archiving**: Choose which emails to archive (all selected by default)
+5. **Select for Archiving**: Choose which emails to archive (all selected by default, except emails you flagged, marked ⚑; unread emails have a blue dot)
 6. **Archive**: Click "Archive Selected" and confirm to move emails to archive folder, or click "Archive & Find Next" to archive immediately without confirmation and automatically search for the next batch of similar emails
 
 ### Key Features
