@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,12 @@ type Client struct {
 	apiToken   string
 	httpClient *http.Client
 	session    *Session
+
+	// mailboxMu guards inboxID and archiveID, which mailboxIDs looks up
+	// once. The HTTP server calls the client from concurrent handlers.
+	mailboxMu sync.Mutex
+	inboxID   string
+	archiveID string
 }
 
 type Session struct {

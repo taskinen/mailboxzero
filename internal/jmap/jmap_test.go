@@ -361,12 +361,14 @@ func TestClient_MakeRequest_Unauthenticated(t *testing.T) {
 
 // TestClient_InboxPage_SingleMailboxLookup checks that loading an inbox page
 // looks the mailboxes up only once: one HTTP request for Mailbox/get and one
-// for Email/query plus Email/get.
+// for Email/query plus Email/get. The paged listing also asks for the inbox
+// count in that request, since it reuses the mailbox ids on later pages.
 func TestClient_InboxPage_SingleMailboxLookup(t *testing.T) {
 	tests := []struct {
-		name      string
-		fetch     func(c *Client) ([]Email, int, error)
-		wantTotal int
+		name         string
+		fetch        func(c *Client) ([]Email, int, error)
+		wantTotal    int
+		wantRequests string
 	}{
 		{
 			name: "GetInboxEmailsWithCountPaginated",
@@ -377,7 +379,8 @@ func TestClient_InboxPage_SingleMailboxLookup(t *testing.T) {
 				}
 				return info.Emails, info.TotalCount, nil
 			},
-			wantTotal: 42,
+			wantTotal:    42,
+			wantRequests: `[["Mailbox/get"],["Mailbox/get","Email/query","Email/get"]]`,
 		},
 		{
 			name: "GetInboxEmailsPaginated",
@@ -385,6 +388,7 @@ func TestClient_InboxPage_SingleMailboxLookup(t *testing.T) {
 				emails, err := c.GetInboxEmailsPaginated(2, 40)
 				return emails, 0, err
 			},
+			wantRequests: `[["Mailbox/get"],["Email/query","Email/get"]]`,
 		},
 	}
 
@@ -415,8 +419,8 @@ func TestClient_InboxPage_SingleMailboxLookup(t *testing.T) {
 			}
 
 			gotJSON, _ := json.Marshal(fake.requestMethods())
-			if want := `[["Mailbox/get"],["Email/query","Email/get"]]`; string(gotJSON) != want {
-				t.Errorf("JMAP requests = %s, want %s", gotJSON, want)
+			if string(gotJSON) != tt.wantRequests {
+				t.Errorf("JMAP requests = %s, want %s", gotJSON, tt.wantRequests)
 			}
 
 			queries := fake.callArgs("Email/query")

@@ -1,10 +1,13 @@
 package jmap
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -153,4 +156,144 @@ func TestClient_GetMailboxes_Errors(t *testing.T) {
 			t.Errorf("GetMailboxes() error = %v, want request failed: 500", err)
 		}
 	})
+}
+
+// jsonOf returns v as compact JSON, for comparing request structures.
+func jsonOf(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// The inbox and archive ids are looked up once. After that, an inbox page is
+// one request (that also asks for the inbox count), and an archive or undo is
+// just the Email/set.
+func TestClient_RemembersMailboxIDs(t *testing.T) {
+	fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Mailbox/get": mailboxGet(testInbox, testArchive, testLabel),
+		"Email/query": func(map[string]interface{}) map[string]interface{} {
+			return map[string]interface{}{"accountId": "acc", "ids": []string{"e1"}}
+		},
+		"Email/get": func(map[string]interface{}) map[string]interface{} {
+			return map[string]interface{}{"accountId": "acc", "list": []interface{}{map[string]interface{}{"id": "e1"}}}
+		},
+		"Email/set": emailSetAllUpdated,
+	})
+
+	for i := 0; i < 2; i++ {
+		info, err := c.GetInboxEmailsWithCountPaginated(10, 0)
+		if err != nil {
+			t.Fatalf("GetInboxEmailsWithCountPaginated() unexpected error = %v", err)
+		}
+		if info.TotalCount != 42 || len(info.Emails) != 1 {
+			t.Errorf("page %d = %d emails of %d, want 1 of 42", i+1, len(info.Emails), info.TotalCount)
+		}
+	}
+	if err := c.ArchiveEmails([]string{"e1"}, false); err != nil {
+		t.Fatalf("ArchiveEmails() unexpected error = %v", err)
+	}
+	if err := c.UnarchiveEmails([]string{"e1"}, false); err != nil {
+		t.Fatalf("UnarchiveEmails() unexpected error = %v", err)
+	}
+
+	page := `["Mailbox/get","Email/query","Email/get"]`
+	want := `[["Mailbox/get"],` + page + `,` + page + `,["Email/set"],["Email/set"]]`
+	if got := jsonOf(fake.requestMethods()); got != want {
+		t.Errorf("JMAP requests = %s, want %s", got, want)
+	}
+
+	// Only the lookup lists every mailbox; the pages ask for the inbox count.
+	gets := fake.callArgs("Mailbox/get")
+	if _, ok := gets[0]["ids"]; ok {
+		t.Errorf("lookup Mailbox/get = %s, want every mailbox", jsonOf(gets[0]))
+	}
+	for _, args := range gets[1:] {
+		if jsonOf(args["ids"]) != `["mb-inbox"]` || jsonOf(args["properties"]) != `["totalEmails"]` {
+			t.Errorf("page Mailbox/get = %s, want the inbox's totalEmails", jsonOf(args))
+		}
+	}
+}
+
+// A failed archive may come from a mailbox that was deleted or replaced, so
+// the next call looks the ids up again.
+func TestClient_LooksUpMailboxIDsAgainAfterAFailure(t *testing.T) {
+	var reject atomic.Bool
+	reject.Store(true)
+	fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Mailbox/get": mailboxGet(testInbox, testArchive),
+		"Email/set": func(args map[string]interface{}) map[string]interface{} {
+			if reject.Load() {
+				return map[string]interface{}{"accountId": "acc", "notUpdated": map[string]interface{}{
+					"e1": map[string]interface{}{"type": "invalidProperties"},
+				}}
+			}
+			return emailSetAllUpdated(args)
+		},
+	})
+
+	if err := c.ArchiveEmails([]string{"e1"}, false); err == nil {
+		t.Fatal("ArchiveEmails() succeeded, want the rejection")
+	}
+	reject.Store(false)
+	for i := 0; i < 2; i++ {
+		if err := c.ArchiveEmails([]string{"e1"}, false); err != nil {
+			t.Fatalf("ArchiveEmails() unexpected error = %v", err)
+		}
+	}
+
+	want := `[["Mailbox/get"],["Email/set"],["Mailbox/get"],["Email/set"],["Email/set"]]`
+	if got := jsonOf(fake.requestMethods()); got != want {
+		t.Errorf("JMAP requests = %s, want %s", got, want)
+	}
+}
+
+// Without an archive mailbox nothing is remembered, so an archive created
+// later is found.
+func TestClient_FindsArchiveCreatedLater(t *testing.T) {
+	var hasArchive atomic.Bool
+	fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Mailbox/get": func(args map[string]interface{}) map[string]interface{} {
+			if hasArchive.Load() {
+				return mailboxGet(testInbox, testArchive)(args)
+			}
+			return mailboxGet(testInbox)(args)
+		},
+		"Email/set": emailSetAllUpdated,
+	})
+
+	if err := c.ArchiveEmails([]string{"e1"}, false); err == nil || err.Error() != "archive folder not found" {
+		t.Fatalf("ArchiveEmails() error = %v, want archive folder not found", err)
+	}
+	hasArchive.Store(true)
+	if err := c.ArchiveEmails([]string{"e1"}, false); err != nil {
+		t.Fatalf("ArchiveEmails() unexpected error = %v", err)
+	}
+
+	want := `[["Mailbox/get"],["Mailbox/get"],["Email/set"]]`
+	if got := jsonOf(fake.requestMethods()); got != want {
+		t.Errorf("JMAP requests = %s, want %s", got, want)
+	}
+}
+
+// The HTTP server calls the client from concurrent handlers; run with -race.
+func TestClient_MailboxIDsConcurrentUse(t *testing.T) {
+	fake, c := newFakeJMAPServer(t, map[string]jmapMethodHandler{
+		"Mailbox/get": mailboxGet(testInbox, testArchive),
+		"Email/set":   emailSetAllUpdated,
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := c.ArchiveEmails([]string{"e1"}, false); err != nil {
+				t.Errorf("ArchiveEmails() unexpected error = %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if lookups := len(fake.callArgs("Mailbox/get")); lookups != 1 {
+		t.Errorf("mailboxes looked up %d times, want once", lookups)
+	}
 }

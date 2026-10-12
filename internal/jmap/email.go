@@ -168,6 +168,45 @@ func (c *Client) inboxMailbox() (Mailbox, error) {
 	return Mailbox{}, fmt.Errorf("inbox not found")
 }
 
+// mailboxIDs returns the ids of the inbox and the archive. The first call
+// looks them up with Mailbox/get; later calls reuse them, since a mailbox
+// keeps its id. archiveID is empty when the account has no archive, and
+// then the lookup is repeated next time, in case one has been created.
+func (c *Client) mailboxIDs() (inboxID, archiveID string, err error) {
+	c.mailboxMu.Lock()
+	defer c.mailboxMu.Unlock()
+	if c.inboxID != "" && c.archiveID != "" {
+		return c.inboxID, c.archiveID, nil
+	}
+
+	mailboxes, err := c.GetMailboxes()
+	if err != nil {
+		return "", "", err
+	}
+	for _, mb := range mailboxes {
+		switch mb.Role {
+		case "inbox":
+			inboxID = mb.ID
+		case "archive":
+			archiveID = mb.ID
+		}
+	}
+	if inboxID == "" {
+		return "", "", fmt.Errorf("inbox not found")
+	}
+
+	c.inboxID, c.archiveID = inboxID, archiveID
+	return inboxID, archiveID, nil
+}
+
+// forgetMailboxIDs makes the next mailboxIDs call look the ids up again,
+// after a request that used them failed (say, the archive was replaced).
+func (c *Client) forgetMailboxIDs() {
+	c.mailboxMu.Lock()
+	defer c.mailboxMu.Unlock()
+	c.inboxID, c.archiveID = "", ""
+}
+
 func (c *Client) GetInboxEmails(limit int) ([]Email, error) {
 	return c.GetInboxEmailsPaginated(limit, 0)
 }
@@ -196,6 +235,20 @@ var emailSummaryProperties = []string{
 // queryMailboxEmails fetches one page of a mailbox's emails, newest first and
 // without bodies, in a single Email/query + Email/get request.
 func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset int) ([]Email, error) {
+	resp, err := c.makeRequest(emailPageCalls(accountID, mailboxID, limit, offset))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get emails: %w", err)
+	}
+
+	if len(resp.MethodResponses) < 2 {
+		return nil, fmt.Errorf("insufficient responses received")
+	}
+	return parseEmailList(resp.MethodResponses[1])
+}
+
+// emailPageCalls returns the Email/query and Email/get calls that list one
+// page of a mailbox's emails, newest first and without bodies.
+func emailPageCalls(accountID, mailboxID string, limit, offset int) []MethodCall {
 	queryParams := map[string]interface{}{
 		"accountId": accountID,
 		"filter": map[string]interface{}{
@@ -211,7 +264,7 @@ func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset i
 		queryParams["position"] = offset
 	}
 
-	methodCalls := []MethodCall{
+	return []MethodCall{
 		{"Email/query", queryParams, "0"},
 		{"Email/get", map[string]interface{}{
 			"accountId":  accountID,
@@ -219,17 +272,10 @@ func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset i
 			"properties": emailSummaryProperties,
 		}, "1"},
 	}
+}
 
-	resp, err := c.makeRequest(methodCalls)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get emails: %w", err)
-	}
-
-	if len(resp.MethodResponses) < 2 {
-		return nil, fmt.Errorf("insufficient responses received")
-	}
-
-	emailGetResponse := resp.MethodResponses[1]
+// parseEmailList returns the emails of an Email/get method response.
+func parseEmailList(emailGetResponse []interface{}) ([]Email, error) {
 	if len(emailGetResponse) < 2 {
 		return nil, fmt.Errorf("invalid email get response format")
 	}
@@ -237,6 +283,9 @@ func (c *Client) queryMailboxEmails(accountID, mailboxID string, limit, offset i
 	responseData, ok := emailGetResponse[1].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid response data format")
+	}
+	if name, _ := emailGetResponse[0].(string); name == "error" {
+		return nil, fmt.Errorf("server rejected Email/get: %s", describeJMAPError(responseData))
 	}
 
 	emailsData, ok := responseData["list"].([]interface{})
@@ -319,21 +368,63 @@ func (c *Client) GetInboxEmailsWithCountPaginated(limit, offset int) (*InboxInfo
 		return nil, fmt.Errorf("no primary account found")
 	}
 
-	// One Mailbox/get provides both the inbox id and its email count.
-	inbox, err := c.inboxMailbox()
+	inboxID, _, err := c.mailboxIDs()
 	if err != nil {
 		return nil, err
 	}
 
-	emails, err := c.queryMailboxEmails(accountID, inbox.ID, limit, offset)
+	// One request returns both the inbox's email count and the page.
+	calls := append([]MethodCall{
+		{"Mailbox/get", map[string]interface{}{
+			"accountId":  accountID,
+			"ids":        []string{inboxID},
+			"properties": []string{"totalEmails"},
+		}, "count"},
+	}, emailPageCalls(accountID, inboxID, limit, offset)...)
+
+	resp, err := c.makeRequest(calls)
+	if err == nil && len(resp.MethodResponses) < 3 {
+		err = fmt.Errorf("insufficient responses received")
+	}
+	var info *InboxInfo
+	if err == nil {
+		info, err = parseInboxPage(resp, inboxID)
+	}
 	if err != nil {
+		c.forgetMailboxIDs()
 		return nil, fmt.Errorf("failed to get inbox emails: %w", err)
 	}
+	return info, nil
+}
 
-	return &InboxInfo{
-		Emails:     emails,
-		TotalCount: inbox.TotalEmails,
-	}, nil
+// parseInboxPage reads the inbox count (Mailbox/get) and the page of emails
+// (Email/get) from the responses to GetInboxEmailsWithCountPaginated.
+func parseInboxPage(resp *Response, inboxID string) (*InboxInfo, error) {
+	countResponse := resp.MethodResponses[0]
+	if len(countResponse) < 2 {
+		return nil, fmt.Errorf("invalid mailbox get response format")
+	}
+	countData, _ := countResponse[1].(map[string]interface{})
+	if name, _ := countResponse[0].(string); name == "error" {
+		return nil, fmt.Errorf("server rejected Mailbox/get: %s", describeJMAPError(countData))
+	}
+	list, _ := countData["list"].([]interface{})
+	total := -1
+	for _, item := range list {
+		mailbox, _ := item.(map[string]interface{})
+		if getString(mailbox, "id") == inboxID {
+			total = getInt(mailbox, "totalEmails")
+		}
+	}
+	if total < 0 {
+		return nil, fmt.Errorf("inbox not found")
+	}
+
+	emails, err := parseEmailList(resp.MethodResponses[2])
+	if err != nil {
+		return nil, err
+	}
+	return &InboxInfo{Emails: emails, TotalCount: total}, nil
 }
 
 func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
@@ -341,32 +432,35 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 		fmt.Printf("[DRY RUN] Would archive %d emails: %v\n", len(emailIDs), emailIDs)
 		return nil
 	}
+	return c.moveEmails(emailIDs, true)
+}
 
+func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
+	if dryRun {
+		fmt.Printf("[DRY RUN] Would unarchive %d emails: %v\n", len(emailIDs), emailIDs)
+		return nil
+	}
+	return c.moveEmails(emailIDs, false)
+}
+
+// moveEmails moves emails from the inbox to the archive (toArchive) or back,
+// in one Email/set request once the mailbox ids are known.
+func (c *Client) moveEmails(emailIDs []string, toArchive bool) error {
 	accountID := c.GetPrimaryAccount()
 	if accountID == "" {
 		return fmt.Errorf("no primary account found")
 	}
 
-	mailboxes, err := c.GetMailboxes()
+	inboxID, archiveID, err := c.mailboxIDs()
 	if err != nil {
-		return fmt.Errorf("failed to get mailboxes: %w", err)
-	}
-
-	var inboxID, archiveID string
-	for _, mb := range mailboxes {
-		if mb.Role == "inbox" {
-			inboxID = mb.ID
-		}
-		if mb.Role == "archive" {
-			archiveID = mb.ID
-		}
-	}
-
-	if inboxID == "" {
-		return fmt.Errorf("inbox not found")
+		return err
 	}
 	if archiveID == "" {
 		return fmt.Errorf("archive folder not found")
+	}
+	from, to := inboxID, archiveID
+	if !toArchive {
+		from, to = archiveID, inboxID
 	}
 
 	// Patch only the inbox and archive memberships. Replacing the whole
@@ -376,8 +470,8 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 	updates := make(map[string]interface{})
 	for _, emailID := range emailIDs {
 		updates[emailID] = map[string]interface{}{
-			"mailboxIds/" + inboxID:   nil,
-			"mailboxIds/" + archiveID: true,
+			"mailboxIds/" + from: nil,
+			"mailboxIds/" + to:   true,
 		}
 	}
 
@@ -388,72 +482,17 @@ func (c *Client) ArchiveEmails(emailIDs []string, dryRun bool) error {
 		}, "0"},
 	}
 
-	// Return these errors as they are: the HTTP handler already adds the
-	// "Failed to archive emails:" prefix the user sees.
+	// Return these errors as they are: the HTTP handlers already add the
+	// "Failed to archive emails:" (or unarchive) prefix the user sees.
 	resp, err := c.makeRequest(methodCalls)
+	if err == nil {
+		err = checkSetResponse(resp)
+	}
 	if err != nil {
-		return err
+		// The failure may come from a mailbox that no longer exists.
+		c.forgetMailboxIDs()
 	}
-	return checkSetResponse(resp)
-}
-
-func (c *Client) UnarchiveEmails(emailIDs []string, dryRun bool) error {
-	if dryRun {
-		fmt.Printf("[DRY RUN] Would unarchive %d emails: %v\n", len(emailIDs), emailIDs)
-		return nil
-	}
-
-	accountID := c.GetPrimaryAccount()
-	if accountID == "" {
-		return fmt.Errorf("no primary account found")
-	}
-
-	mailboxes, err := c.GetMailboxes()
-	if err != nil {
-		return fmt.Errorf("failed to get mailboxes: %w", err)
-	}
-
-	var inboxID, archiveID string
-	for _, mb := range mailboxes {
-		if mb.Role == "inbox" {
-			inboxID = mb.ID
-		}
-		if mb.Role == "archive" {
-			archiveID = mb.ID
-		}
-	}
-
-	if inboxID == "" {
-		return fmt.Errorf("inbox not found")
-	}
-	if archiveID == "" {
-		return fmt.Errorf("archive folder not found")
-	}
-
-	// The reverse of ArchiveEmails: leave the archive and rejoin the inbox,
-	// keeping every other mailbox membership.
-	updates := make(map[string]interface{})
-	for _, emailID := range emailIDs {
-		updates[emailID] = map[string]interface{}{
-			"mailboxIds/" + archiveID: nil,
-			"mailboxIds/" + inboxID:   true,
-		}
-	}
-
-	methodCalls := []MethodCall{
-		{"Email/set", map[string]interface{}{
-			"accountId": accountID,
-			"update":    updates,
-		}, "0"},
-	}
-
-	// Return these errors as they are: the HTTP handler already adds the
-	// "Failed to unarchive emails:" prefix the user sees.
-	resp, err := c.makeRequest(methodCalls)
-	if err != nil {
-		return err
-	}
-	return checkSetResponse(resp)
+	return err
 }
 
 // checkSetResponse returns an error when the server rejected an Email/set
