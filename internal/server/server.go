@@ -22,15 +22,21 @@ import (
 
 const inboxCacheTTL = 60 * time.Second
 
+// maxSimilarityEmails caps how many inbox emails Find Similar searches,
+// newest first, to bound the time one search takes on a very large inbox.
+// A targeted email outside them is fetched by itself.
+const maxSimilarityEmails = 10000
+
 // maxEmailsPageSize caps the limit parameter of /api/emails. It matches the
 // largest page size the UI offers; anything bigger only makes one JMAP
 // request fetch (and the server hold) an unbounded number of emails.
 const maxEmailsPageSize = 500
 
 // HTTP server timeouts, so slow or stalled clients cannot hold connections
-// open indefinitely. Find Similar and archive each make up to two JMAP calls
-// with a 30-second client timeout, plus clustering of up to 1000 emails, so
-// the write timeout leaves room for that.
+// open indefinitely. Find Similar fetches up to maxSimilarityEmails emails in
+// JMAP requests of up to 1000 (usually well under a second each, with a
+// 30-second client timeout) and then groups them, so the write timeout
+// leaves room for that.
 const (
 	readHeaderTimeout = 10 * time.Second
 	readTimeout       = 30 * time.Second
@@ -222,9 +228,18 @@ func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// The target is missing when it is older than the emails searched,
+		// or newer than the cached inbox: fetch it by itself.
 		if targetEmail == nil {
-			http.Error(w, "Target email not found", http.StatusNotFound)
-			return
+			targetEmail, err = s.jmapClient.GetEmail(req.EmailID)
+			if errors.Is(err, jmap.ErrEmailNotFound) {
+				http.Error(w, "Target email not found", http.StatusNotFound)
+				return
+			}
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to get target email: %v", err), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		similarEmails = similarity.FindSimilarToEmail(*targetEmail, emails, req.SimilarityThreshold/100.0)
@@ -259,14 +274,19 @@ func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.jmapClient.ArchiveEmails(req.EmailIDs, s.config.DryRun)
-	// Invalidate even on failure: when the server rejects only some of the
-	// emails, the others have still moved.
-	s.invalidateInboxCache()
-	if err != nil {
+	if err := s.jmapClient.ArchiveEmails(req.EmailIDs, s.config.DryRun); err != nil {
+		// When the server rejects only some of the emails, the others have
+		// still moved, so the cached inbox is out of date.
+		s.invalidateInboxCache()
 		log.Printf("Archive failed: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to archive emails: %v", err), http.StatusInternalServerError)
 		return
+	}
+	// The archived emails have left the inbox. Dropping them from the cache
+	// saves fetching the whole inbox again for the next search. A dry run
+	// moved nothing.
+	if !s.config.DryRun {
+		s.removeFromInboxCache(req.EmailIDs)
 	}
 
 	response := map[string]interface{}{
@@ -317,10 +337,11 @@ func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {
 }
 
 // getInboxForSimilarity returns the cached inbox slice used by /api/similar.
-// The cache avoids re-fetching 1000 emails over JMAP on every click of "Find
-// Similar" or every iteration of the rapid "Archive & Find Next" sweep.
-// handleArchive and handleUnarchive invalidate it so the next call sees the
-// post-archive state.
+// The cache avoids re-fetching up to maxSimilarityEmails emails over JMAP on
+// every click of "Find Similar" or every iteration of the rapid "Archive &
+// Find Next" sweep. handleArchive drops the emails it archived from it, and
+// handleUnarchive invalidates it, so the next call sees the post-archive
+// state.
 func (s *Server) getInboxForSimilarity() ([]jmap.Email, error) {
 	s.inboxMu.Lock()
 	if s.inboxCache != nil && time.Since(s.inboxCachedAt) < inboxCacheTTL {
@@ -330,7 +351,7 @@ func (s *Server) getInboxForSimilarity() ([]jmap.Email, error) {
 	}
 	s.inboxMu.Unlock()
 
-	emails, err := s.jmapClient.GetInboxEmails(1000)
+	emails, err := s.jmapClient.GetInboxEmails(maxSimilarityEmails)
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +361,29 @@ func (s *Server) getInboxForSimilarity() ([]jmap.Email, error) {
 	s.inboxCachedAt = time.Now()
 	s.inboxMu.Unlock()
 	return emails, nil
+}
+
+// removeFromInboxCache drops archived emails from the cached inbox. The
+// cache keeps its age, so new mail still shows up after inboxCacheTTL.
+func (s *Server) removeFromInboxCache(emailIDs []string) {
+	archived := make(map[string]bool, len(emailIDs))
+	for _, id := range emailIDs {
+		archived[id] = true
+	}
+
+	s.inboxMu.Lock()
+	defer s.inboxMu.Unlock()
+	if s.inboxCache == nil {
+		return
+	}
+	// Build a new slice: callers may still be reading the old one.
+	kept := make([]jmap.Email, 0, len(s.inboxCache))
+	for _, email := range s.inboxCache {
+		if !archived[email.ID] {
+			kept = append(kept, email)
+		}
+	}
+	s.inboxCache = kept
 }
 
 func (s *Server) invalidateInboxCache() {

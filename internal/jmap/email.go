@@ -172,6 +172,10 @@ func (c *Client) GetInboxEmails(limit int) ([]Email, error) {
 	return c.GetInboxEmailsPaginated(limit, 0)
 }
 
+// GetInboxEmailsPaginated returns up to limit inbox emails, newest first,
+// starting at offset. It asks for at most emailsPerRequest emails at a time,
+// so any limit works. Mail that arrives or leaves while it pages can shift
+// an email onto the next page as well; each email is returned once.
 func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 	accountID := c.GetPrimaryAccount()
 	if accountID == "" {
@@ -183,7 +187,43 @@ func (c *Client) GetInboxEmailsPaginated(limit, offset int) ([]Email, error) {
 		return nil, err
 	}
 
-	return c.queryMailboxEmails(accountID, inbox.ID, limit, offset)
+	pageSize := c.emailsPerRequest()
+	var emails []Email
+	seen := make(map[string]bool)
+	for position := offset; len(emails) < limit && position < inbox.TotalEmails; {
+		want := min(pageSize, limit-len(emails))
+		page, err := c.queryMailboxEmails(accountID, inbox.ID, want, position)
+		if err != nil {
+			return nil, err
+		}
+		for _, email := range page {
+			if !seen[email.ID] {
+				seen[email.ID] = true
+				emails = append(emails, email)
+			}
+		}
+		// A short page is the end of the inbox.
+		if len(page) < want {
+			break
+		}
+		position += len(page)
+	}
+
+	return emails, nil
+}
+
+// maxEmailsPerRequest is the most emails one Email/query and Email/get ask
+// for, unless the server allows fewer.
+const maxEmailsPerRequest = 1000
+
+// emailsPerRequest returns maxEmailsPerRequest, or the server's limit on
+// objects in one Email/get (maxObjectsInGet in the session) when lower.
+func (c *Client) emailsPerRequest() int {
+	core, _ := c.session.Capabilities["urn:ietf:params:jmap:core"].(map[string]interface{})
+	if limit, ok := core["maxObjectsInGet"].(float64); ok && limit >= 1 && limit < maxEmailsPerRequest {
+		return int(limit)
+	}
+	return maxEmailsPerRequest
 }
 
 // emailSummaryProperties are the Email properties of inbox listings. Bodies

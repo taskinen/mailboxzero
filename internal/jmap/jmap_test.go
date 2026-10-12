@@ -3,6 +3,9 @@ package jmap
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 )
@@ -479,6 +482,132 @@ func TestClient_GetInboxEmailsWithCount(t *testing.T) {
 	if info.TotalCount < len(info.Emails) {
 		t.Errorf("GetInboxEmailsWithCount() TotalCount = %d, but returned %d emails",
 			info.TotalCount, len(info.Emails))
+	}
+}
+
+// pagedInbox answers Mailbox/get, Email/query and Email/get for an inbox
+// holding the given email IDs, newest first, honouring position and limit
+// like a JMAP server. Before each Email/query, arrive may add new mail.
+func pagedInbox(ids []string, arrive func(ids []string) []string) map[string]jmapMethodHandler {
+	var mu sync.Mutex
+	var page []string // the IDs of the last Email/query, for its Email/get
+	return map[string]jmapMethodHandler{
+		"Mailbox/get": mailboxGet(map[string]interface{}{"id": "mb-inbox", "role": "inbox", "totalEmails": len(ids)}),
+		"Email/query": func(args map[string]interface{}) map[string]interface{} {
+			mu.Lock()
+			defer mu.Unlock()
+			if arrive != nil {
+				ids = arrive(ids)
+			}
+			position, _ := args["position"].(float64)
+			limit, _ := args["limit"].(float64)
+			start := min(int(position), len(ids))
+			page = ids[start:min(start+int(limit), len(ids))]
+			return map[string]interface{}{"accountId": "acc", "ids": page, "position": start}
+		},
+		"Email/get": func(map[string]interface{}) map[string]interface{} {
+			mu.Lock()
+			defer mu.Unlock()
+			list := make([]interface{}, len(page))
+			for i, id := range page {
+				list[i] = map[string]interface{}{"id": id, "subject": "Subject " + id}
+			}
+			return map[string]interface{}{"accountId": "acc", "list": list}
+		},
+	}
+}
+
+func emailIDs(n int) []string {
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("e%d", i)
+	}
+	return ids
+}
+
+// GetInboxEmailsPaginated fetches any number of emails, in requests of at
+// most 1000 or the server's own limit.
+func TestClient_GetInboxEmailsPaginated_Pages(t *testing.T) {
+	tests := []struct {
+		name            string
+		inbox           int
+		maxObjectsInGet int // 0: the session does not say
+		limit, offset   int
+		wantPositions   []int
+		wantLimits      []int
+		wantFirst       string
+		wantCount       int
+	}{
+		{name: "whole inbox", inbox: 2500, limit: 10000, wantPositions: []int{0, 1000, 2000}, wantLimits: []int{1000, 1000, 1000}, wantFirst: "e0", wantCount: 2500},
+		{name: "part of the inbox", inbox: 2500, limit: 1500, wantPositions: []int{0, 1000}, wantLimits: []int{1000, 500}, wantFirst: "e0", wantCount: 1500},
+		{name: "from an offset", inbox: 2500, limit: 1500, offset: 2000, wantPositions: []int{2000}, wantLimits: []int{1000}, wantFirst: "e2000", wantCount: 500},
+		{name: "inbox a multiple of the page size", inbox: 2000, limit: 10000, wantPositions: []int{0, 1000}, wantLimits: []int{1000, 1000}, wantFirst: "e0", wantCount: 2000},
+		{name: "server allows fewer per request", inbox: 1000, maxObjectsInGet: 400, limit: 10000, wantPositions: []int{0, 400, 800}, wantLimits: []int{400, 400, 400}, wantFirst: "e0", wantCount: 1000},
+		{name: "server allows more per request", inbox: 1500, maxObjectsInGet: 5000, limit: 10000, wantPositions: []int{0, 1000}, wantLimits: []int{1000, 1000}, wantFirst: "e0", wantCount: 1500},
+		{name: "empty inbox", inbox: 0, limit: 10000, wantCount: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake, c := newFakeJMAPServer(t, pagedInbox(emailIDs(tt.inbox), nil))
+			if tt.maxObjectsInGet > 0 {
+				c.session.Capabilities = map[string]interface{}{
+					"urn:ietf:params:jmap:core": map[string]interface{}{"maxObjectsInGet": float64(tt.maxObjectsInGet)},
+				}
+			}
+
+			emails, err := c.GetInboxEmailsPaginated(tt.limit, tt.offset)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var positions, limits []int
+			for _, args := range fake.callArgs("Email/query") {
+				position, _ := args["position"].(float64)
+				limit, _ := args["limit"].(float64)
+				positions = append(positions, int(position))
+				limits = append(limits, int(limit))
+			}
+			if !slices.Equal(positions, tt.wantPositions) || !slices.Equal(limits, tt.wantLimits) {
+				t.Errorf("Email/query positions %v limits %v, want %v and %v", positions, limits, tt.wantPositions, tt.wantLimits)
+			}
+			if len(emails) != tt.wantCount {
+				t.Fatalf("got %d emails, want %d", len(emails), tt.wantCount)
+			}
+			if tt.wantCount > 0 && emails[0].ID != tt.wantFirst {
+				t.Errorf("first email = %s, want %s", emails[0].ID, tt.wantFirst)
+			}
+		})
+	}
+}
+
+// New mail arriving between two pages pushes the last email of one page onto
+// the next; it is returned only once.
+func TestClient_GetInboxEmailsPaginated_SkipsRepeatedEmails(t *testing.T) {
+	queries := 0
+	arrive := func(ids []string) []string {
+		queries++
+		if queries == 2 {
+			return append([]string{"new"}, ids...)
+		}
+		return ids
+	}
+	_, c := newFakeJMAPServer(t, pagedInbox(emailIDs(1500), arrive))
+
+	emails, err := c.GetInboxEmails(10000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	seen := map[string]bool{}
+	for _, email := range emails {
+		if seen[email.ID] {
+			t.Fatalf("email %s returned twice", email.ID)
+		}
+		seen[email.ID] = true
+	}
+	if len(emails) != 1500 {
+		t.Errorf("got %d emails, want the 1500 that were there when paging started", len(emails))
 	}
 }
 
