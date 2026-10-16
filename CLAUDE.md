@@ -408,7 +408,7 @@ CMD ["./mailboxzero"]
 - **Symptom:** "Failed to authenticate" error
 - **Solutions:**
   1. Verify Fastmail API token is correct
-  2. Generate new API token in Fastmail settings (Settings → Privacy & Security → Connected apps & API tokens → Manage API tokens → New API token)
+  2. Generate new API token in Fastmail settings (Settings → Privacy & Security → Connected apps & API tokens → Manage API tokens → New API token) with the Email scope (`urn:ietf:params:jmap:mail`); without it requests fail with "no primary account found". Archiving and Undo also need "Read-only access" off, unless `dry_run` is true
   3. Ensure JMAP is enabled in account settings
   4. Check network connectivity to api.fastmail.com
 

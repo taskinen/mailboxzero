@@ -64,8 +64,10 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 1. Log into your Fastmail account
 2. Go to Settings → Privacy & Security → Connected apps & API tokens
 3. Click "Manage API tokens", then "New API token"
-4. Set the scope to "Mail" access
-5. Generate the token and copy it to your config file
+4. Enter a name (for example "Mailbox Zero") and keep the protocol set to JMAP
+5. Under Scopes, select only "Email" (`urn:ietf:params:jmap:mail`), the only one the app uses
+6. Leave "Read-only access" off if you want to archive. A read-only token is enough while `dry_run` is `true`, since nothing is changed then, but archiving and Undo need to change your mail
+7. Click "Generate API token" and copy the token to your config file
 
 ### Running the Application
 

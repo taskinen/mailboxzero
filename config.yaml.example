@@ -7,7 +7,7 @@ server:
 
 jmap:
   endpoint: "https://api.fastmail.com/jmap/session"
-  api_token: ""  # Set your Fastmail API token (Settings → Privacy & Security → Connected apps & API tokens → Manage API tokens → New API token)
+  api_token: ""  # Set your Fastmail API token (Settings → Privacy & Security → Connected apps & API tokens → Manage API tokens → New API token, with the Email scope)
 
 # IMPORTANT SAFETY FEATURE
 # Set to false to enable actual archiving operations
