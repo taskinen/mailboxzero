@@ -1,0 +1,48 @@
+# GoReleaser builds the binaries of a release and attaches them to its
+# GitHub release. .github/workflows/release.yml runs it when a version tag
+# is pushed; see "Releasing" in CLAUDE.md.
+version: 2
+
+project_name: mailboxzero
+
+builds:
+  - main: .
+    binary: mailboxzero
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # No -X flags: the binary reports its version (the tag) from the build
+    # information Go records in it, like a go install of the same tag.
+    ldflags:
+      - -s -w
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    wrap_in_directory: true
+    files:
+      - LICENSE
+      - README.md
+      - config.yaml.example
+
+checksum:
+  name_template: checksums.txt
+
+# The release notes are written by hand in a draft release.
+changelog:
+  disable: true
+
+release:
+  # The draft must have exactly this name for GoReleaser to find it, add
+  # the archives and publish it, keeping its notes.
+  name_template: "Mailbox Zero {{ .Tag }}"
+  use_existing_draft: true
+  mode: keep-existing
+  # Lets a re-run of the workflow replace archives a failed run uploaded.
+  replace_existing_artifacts: true

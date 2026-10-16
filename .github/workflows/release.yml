@@ -1,0 +1,41 @@
+name: Release
+
+# Pushing a version tag (vX.Y.Z) builds the binaries with GoReleaser
+# (.goreleaser.yaml), adds them to the draft release of that version and
+# publishes it. See "Releasing" in CLAUDE.md.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Publish
+    runs-on: ubuntu-26.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    # No cache: release binaries are built from scratch.
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.26.x'
+        cache: false
+
+    - name: Run tests
+      run: go test ./... -count=1
+
+    - name: Build and publish with GoReleaser
+      uses: goreleaser/goreleaser-action@v7
+      with:
+        version: '~> v2'
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -37,6 +37,22 @@ jobs:
         fi
         echo "All Go files are properly formatted"
 
+  release-config:
+    name: Check Release Config
+    runs-on: ubuntu-26.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    # A mistake in .goreleaser.yaml would otherwise only show when a
+    # version is tagged. check also fails on deprecated settings.
+    - name: Check GoReleaser config
+      uses: goreleaser/goreleaser-action@v7
+      with:
+        version: '~> v2'
+        args: check
+
   test:
     name: Run Tests
     runs-on: ubuntu-26.04
