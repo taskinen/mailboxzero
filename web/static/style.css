@@ -81,6 +81,14 @@ header h1 {
     cursor: pointer;
 }
 
+/* Wide enough for "100%", with digits of equal width, so the label keeps
+   one width and the slider next to it stays put while it is dragged. */
+.similarity-value {
+    display: inline-block;
+    min-width: 5ch;
+    font-variant-numeric: tabular-nums;
+}
+
 .similarity-slider {
     width: 150px;
     height: 6px;
