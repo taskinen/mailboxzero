@@ -3,7 +3,7 @@
 ## Project Status: ✅ COMPLETED
 
 **Last Updated:** October 16, 2026 (documentation sync)
-**Version:** 1.0
+**Version:** the latest `vX.Y.Z` tag and GitHub release (see Releasing); a binary prints its own with `-version`
 **Status:** Production Ready (with dry run safety)
 
 ## Project Overview
@@ -28,7 +28,8 @@ mailboxzero/
 ├── go.mod / go.sum             # Go module dependencies (gorilla/mux, yaml.v3)
 ├── config.yaml.example         # Configuration template
 ├── config-mock.yaml.example    # Mock-mode configuration template
-├── .gitignore                  # Git ignore rules
+├── .gitignore                  # Git ignore rules (dist/ must stay ignored, see Releasing)
+├── .goreleaser.yaml            # Release binaries: linux/macOS/Windows × amd64/arm64 archives and checksums.txt
 ├── LICENSE                     # MIT license
 ├── README.md                   # User documentation
 ├── CLAUDE.md                   # Development documentation (this file)
@@ -37,7 +38,8 @@ mailboxzero/
 ├── .github/
 │   ├── dependabot.yml          # Weekly dependency update PRs: Go modules, GitHub Actions, e2e npm
 │   └── workflows/
-│       └── test.yml            # CI: gofmt check, `go test -race`, then `-coverprofile` without `-race` (together they are slow), Playwright e2e tests. Only the test job saves the Go build cache (the e2e job restores it), and `-count=1` keeps every test running
+│       ├── release.yml         # On a vX.Y.Z tag: tests, GoReleaser builds, fills and publishes the draft release
+│       └── test.yml            # CI: gofmt check, GoReleaser config check, `go test -race`, then `-coverprofile` without `-race` (together they are slow), Playwright e2e tests. Only the test job saves the Go build cache (the e2e job restores it), and `-count=1` keeps every test running
 ├── e2e/                        # Playwright end-to-end tests, run against the server in mock mode
 │   ├── package.json            # @playwright/test dev dependency (plus package-lock.json)
 │   ├── playwright.config.js    # Starts the server with config-e2e.yaml and drives the installed Chrome
@@ -395,6 +397,25 @@ COPY --from=builder /app/mailboxzero .
 CMD ["./mailboxzero"]
 ```
 
+## Releasing
+
+Versions are semver tags `vX.Y.Z` on `main`. Users install a version with `go install github.com/taskinen/mailboxzero@latest`, which Go's module proxy builds from the tag, or download the archives GoReleaser attaches to the GitHub release (`.goreleaser.yaml`: linux, macOS and Windows for amd64 and arm64, each with `LICENSE`, `README.md` and `config.yaml.example`, plus `checksums.txt`). A binary reads its version from the build information Go records in it (`-version`), so no code changes for a release.
+
+1. Make sure `main` has everything for the release, README included (the archives and pkg.go.dev show the tagged commit's README), and that its CI is green.
+2. Write the release notes and create a draft release named exactly `Mailbox Zero vX.Y.Z`; GoReleaser finds the draft by that name (`release.name_template`):
+   ```bash
+   gh release create vX.Y.Z --draft --title "Mailbox Zero vX.Y.Z" --notes-file notes.md --target <commit sha>
+   ```
+3. Review the draft on GitHub, then tag that commit and push the tag:
+   ```bash
+   git tag -a vX.Y.Z <commit sha> -m "Mailbox Zero vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+4. `.github/workflows/release.yml` runs the tests, builds with GoReleaser, adds the archives and `checksums.txt` to the draft and publishes it, keeping its notes (`mode: keep-existing`). If it fails, re-run the job: it replaces archives a failed run already uploaded.
+5. Check the result: `GOBIN=$(mktemp -d) go install github.com/taskinen/mailboxzero@vX.Y.Z` and run that binary with `-version`; `go version -m` on a downloaded binary shows `vX.Y.Z` and `vcs.modified=false`. Ask the Go proxy for the version, so that `@latest` finds it soon: `GOPROXY=https://proxy.golang.org go list -m github.com/taskinen/mailboxzero@vX.Y.Z`.
+
+Never move or delete a published tag: the Go module proxy and checksum database keep each version's content for good. Fix a bad release with a new patch version, plus a `retract` directive in `go.mod` if the bad one must not be used. `dist/`, GoReleaser's output, must stay in `.gitignore`: Go counts untracked files as uncommitted changes and would stamp the binaries `+dirty`, and GoReleaser refuses to build from a dirty tree. The "Check Release Config" job in `test.yml` runs `goreleaser check` on every push.
+
 ## Known Limitations and Future Enhancements
 
 ### Current Limitations
@@ -483,7 +504,7 @@ Tests follow Go best practices:
 ## Maintenance Notes
 
 ### Regular Maintenance Tasks
-1. **Dependency Updates:** Dependabot (`.github/dependabot.yml`) opens weekly PRs for Go modules, GitHub Actions and the e2e Playwright package; review and merge them once CI passes. `go-junit-report`, which CI uses for the test report, is pinned in `test.yml` (`GO_JUNIT_REPORT_VERSION`, with its binary cached by version) and is updated by hand
+1. **Dependency Updates:** Dependabot (`.github/dependabot.yml`) opens weekly PRs for Go modules, GitHub Actions and the e2e Playwright package; review and merge them once CI passes. `go-junit-report`, which CI uses for the test report, is pinned in `test.yml` (`GO_JUNIT_REPORT_VERSION`, with its binary cached by version) and is updated by hand. GoReleaser runs as its latest v2 (`version: '~> v2'` in `release.yml` and `test.yml`), so a deprecation it starts reporting fails the "Check Release Config" job until `.goreleaser.yaml` is updated
 2. **Security Patches:** Monitor for security vulnerabilities
 3. **Performance Monitoring:** Track API response times
 4. **Log Analysis:** Review error patterns and usage metrics

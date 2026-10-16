@@ -72,3 +72,7 @@ config.yaml.bak
 e2e/node_modules/
 e2e/test-results/
 e2e/playwright-report/
+
+# GoReleaser output. It must stay ignored: an untracked file would make Go
+# stamp the release binaries "+dirty" and GoReleaser refuse to run.
+dist/
