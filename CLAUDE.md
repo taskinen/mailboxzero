@@ -464,7 +464,7 @@ Tests follow Go best practices:
 ## Maintenance Notes
 
 ### Regular Maintenance Tasks
-1. **Dependency Updates:** Dependabot (`.github/dependabot.yml`) opens weekly PRs for Go modules, GitHub Actions and the e2e Playwright package; review and merge them once CI passes
+1. **Dependency Updates:** Dependabot (`.github/dependabot.yml`) opens weekly PRs for Go modules, GitHub Actions and the e2e Playwright package; review and merge them once CI passes. `go-junit-report`, which CI uses for the test report, is pinned in `test.yml` (`GO_JUNIT_REPORT_VERSION`, with its binary cached by version) and is updated by hand
 2. **Security Patches:** Monitor for security vulnerabilities
 3. **Performance Monitoring:** Track API response times
 4. **Log Analysis:** Review error patterns and usage metrics
