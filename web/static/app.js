@@ -808,6 +808,16 @@ class MailboxZero {
         return div.innerHTML;
     }
 
+    // The text of an HTML email body. The HTML is parsed into a separate
+    // document without a window, which loads no images and runs no scripts
+    // or event handlers, unlike HTML set on an element of this page. Only
+    // its text is read; no node from it is ever put into the page.
+    htmlToText(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('script, style, title').forEach(element => element.remove());
+        return doc.body.textContent;
+    }
+
     // Email Preview Methods
     showEmailPreview(event, email) {
         // Don't show preview if previews are disabled
@@ -913,16 +923,13 @@ class MailboxZero {
             }
         }
         
-        // If no text body, try HTML body but strip HTML tags
+        // If no text body, use the text of the HTML body
         if (!bodyContent && email.bodyValues && email.htmlBody && email.htmlBody.length > 0) {
             for (const part of email.htmlBody) {
                 if (part.partId && email.bodyValues[part.partId]) {
                     const bodyValue = email.bodyValues[part.partId];
                     if (bodyValue.value && bodyValue.value.trim()) {
-                        // Strip HTML tags for preview
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = bodyValue.value;
-                        bodyContent = tempDiv.textContent || tempDiv.innerText || '';
+                        bodyContent = this.htmlToText(bodyValue.value);
                         break;
                     }
                 }
@@ -934,11 +941,9 @@ class MailboxZero {
             for (const partId in email.bodyValues) {
                 const bodyValue = email.bodyValues[partId];
                 if (bodyValue.value && bodyValue.value.trim()) {
-                    // If it looks like HTML, strip tags
+                    // If it looks like HTML, use its text
                     if (bodyValue.value.includes('<') && bodyValue.value.includes('>')) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = bodyValue.value;
-                        bodyContent = tempDiv.textContent || tempDiv.innerText || '';
+                        bodyContent = this.htmlToText(bodyValue.value);
                     } else {
                         bodyContent = bodyValue.value;
                     }
