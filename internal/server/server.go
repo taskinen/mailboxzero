@@ -16,6 +16,7 @@ import (
 	"github.com/taskinen/mailboxzero/internal/config"
 	"github.com/taskinen/mailboxzero/internal/jmap"
 	"github.com/taskinen/mailboxzero/internal/similarity"
+	"github.com/taskinen/mailboxzero/internal/version"
 	"github.com/taskinen/mailboxzero/web"
 
 	"github.com/gorilla/mux"
@@ -66,6 +67,8 @@ type Server struct {
 type PageData struct {
 	DryRun            bool
 	DefaultSimilarity int
+	Version           string // the release version or commit, shown in the header
+	VersionDetail     string // the full version description, shown on hover
 }
 
 func New(cfg *config.Config, jmapClient jmap.JMAPClient) (*Server, error) {
@@ -163,6 +166,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		DryRun:            s.config.DryRun,
 		DefaultSimilarity: s.config.DefaultSimilarity,
+		Version:           version.Short(),
+		VersionDetail:     version.String(),
 	}
 
 	if err := s.templates.ExecuteTemplate(w, "index.html", data); err != nil {

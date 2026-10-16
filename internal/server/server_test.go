@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/taskinen/mailboxzero/internal/config"
 	"github.com/taskinen/mailboxzero/internal/jmap"
+	"github.com/taskinen/mailboxzero/internal/version"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -769,6 +771,13 @@ func TestHandleIndex_WithPageData(t *testing.T) {
 	// The slider starts at the configured similarity
 	if !strings.Contains(body, `value="75"`) {
 		t.Error("handleIndex() should render the default similarity")
+	}
+
+	// The header shows the version, with the full description on hover.
+	wantVersion := fmt.Sprintf(`<span class="app-version" title="%s">%s</span>`,
+		html.EscapeString(version.String()), html.EscapeString(version.Short()))
+	if !strings.Contains(body, wantVersion) {
+		t.Errorf("handleIndex() should render the version %s", wantVersion)
 	}
 }
 

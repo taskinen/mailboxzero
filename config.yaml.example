@@ -1,6 +1,9 @@
 # Mailbox Zero Configuration Example
-# Save this as config.yaml and update it with your settings. An installed
-# binary writes it out with: mailboxzero -example-config > config.yaml
+# Mailbox Zero reads ~/.config/mailboxzero/config.yaml (or
+# $XDG_CONFIG_HOME/mailboxzero/config.yaml), or the file given with -config.
+# Save this there and update it with your settings:
+#   mkdir -p ~/.config/mailboxzero
+#   mailboxzero -example-config > ~/.config/mailboxzero/config.yaml
 
 server:
   port: 8080
