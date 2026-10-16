@@ -39,6 +39,9 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-26.04
+    env:
+      # Dependabot does not update this version; bump it by hand.
+      GO_JUNIT_REPORT_VERSION: v2.1.0
 
     steps:
     - name: Checkout code
@@ -53,8 +56,18 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    # Building go-junit-report from source takes about 10 s, so the binary
+    # of the pinned version is cached.
+    - name: Cache go-junit-report
+      id: go-junit-report-cache
+      uses: actions/cache@v6
+      with:
+        path: ~/go/bin/go-junit-report
+        key: go-junit-report-${{ env.GO_JUNIT_REPORT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
     - name: Install go-junit-report
-      run: go install github.com/jstemmer/go-junit-report/v2@latest
+      if: steps.go-junit-report-cache.outputs.cache-hit != 'true'
+      run: go install github.com/jstemmer/go-junit-report/v2@${{ env.GO_JUNIT_REPORT_VERSION }}
 
     - name: Run tests
       run: |
