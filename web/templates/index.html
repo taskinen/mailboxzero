@@ -17,7 +17,7 @@
                     </div>
                 {{end}}
                 <div class="controls">
-                    <label for="similarity-slider">Similarity: <span id="similarity-value">{{.DefaultSimilarity}}%</span></label>
+                    <label for="similarity-slider">Similarity: <span id="similarity-value" class="similarity-value">{{.DefaultSimilarity}}%</span></label>
                     <input type="range" id="similarity-slider" min="0" max="100" value="{{.DefaultSimilarity}}" class="similarity-slider">
                 </div>
             </div>

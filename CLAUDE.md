@@ -153,7 +153,7 @@ mailboxzero/
 ### ✅ Core Functionality
 1. **Dual-Pane Interface:** Inbox (left) and similar emails (right)
 2. **Smart Similarity Matching:** Multi-factor fuzzy algorithm
-3. **Adjustable Threshold:** 0-100% similarity slider with real-time updates
+3. **Adjustable Threshold:** 0-100% similarity slider with real-time updates. The value label keeps one width (`.similarity-value` in `style.css`), so the slider doesn't move while it is dragged
 4. **Email Selection:** Individual and bulk selection with checkboxes
 5. **Archive Operations:** Bulk archive with JMAP email movement
 6. **Rapid Archive Loop:** "Archive & Find Next" button archives the selected similar emails without confirmation and immediately re-runs the same similarity search (uses `archiveAndFindNext()` in `app.js`)
