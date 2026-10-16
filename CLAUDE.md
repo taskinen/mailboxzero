@@ -23,7 +23,8 @@ Mailbox Zero is a Go-based web application that helps users clean up their Fastm
 ### Project Structure
 ```
 mailboxzero/
-├── main.go                     # Application entry point
+├── main.go                     # Application entry point: flags -config, -version (Go's build info) and -example-config (embeds config.yaml.example)
+├── main_test.go                # Version string, the embedded example config and the missing-config message
 ├── go.mod / go.sum             # Go module dependencies (gorilla/mux, yaml.v3)
 ├── config.yaml.example         # Configuration template
 ├── config-mock.yaml.example    # Mock-mode configuration template
@@ -252,18 +253,25 @@ default_similarity: 60          # Default similarity percentage (0-100)
 go mod download
 go mod tidy
 
-# Create configuration file from example
+# Create configuration file from example (an installed binary prints the same
+# file with: mailboxzero -example-config > config.yaml)
 cp config.yaml.example config.yaml
 # Edit config.yaml with your Fastmail API token
 
-# Run the application
-go run main.go
+# Run the application (always the package ".", not main.go, so every file of
+# package main is included)
+go run .
 
 # Run with custom config
-go run main.go -config custom-config.yaml
+go run . -config custom-config.yaml
 
 # Build for production (a single binary that includes the web page)
-go build -o mailboxzero main.go
+go build -o mailboxzero .
+
+# Show the version: Go records it in the binary, as the tag for a release or
+# go install ...@vX.Y.Z, a pseudo-version (+dirty with uncommitted changes)
+# for go build, and "(devel)" for go run
+./mailboxzero -version
 ```
 
 ### Mock Mode for Testing
@@ -275,7 +283,7 @@ For development and testing purposes, you can run the application in mock mode:
 cp config-mock.yaml.example config.yaml
 
 # Run in mock mode - no Fastmail credentials needed
-go run main.go
+go run .
 ```
 
 **Mock Mode Features:**
@@ -305,7 +313,7 @@ mock_mode: true     # Enable mock mode
 ### Testing Commands
 ```bash
 # Quick start with mock data (no Fastmail account required)
-go run main.go -config config-mock.yaml.example
+go run . -config config-mock.yaml.example
 
 # Run all tests
 go test ./...
@@ -338,7 +346,7 @@ golangci-lint run
 ### Production Deployment
 1. **Build Binary:** the page and static files are built in, so the binary runs from any directory
    ```bash
-   go build -o mailboxzero main.go
+   go build -o mailboxzero .
    ```
 
 2. **Create Production Config:**
@@ -373,7 +381,7 @@ The server only binds to loopback, so a published container port (`-p 8080:8080`
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
-RUN go build -o mailboxzero main.go
+RUN go build -o mailboxzero .
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
@@ -445,7 +453,7 @@ log.SetFlags(log.LstdFlags | log.Lshortfile)
 6. **Comprehensive Testing:** Unit tests for every package under `internal/` (table-driven where it fits), plus Playwright end-to-end tests of the UI
 
 ### Test Coverage
-The project includes unit tests for every package under `internal/` (`main` and `web` have none):
+The project includes unit tests for every package under `internal/` and for the command itself in `main_test.go` (`web` has none):
 - **Config Package:** Configuration loading, validation, and error handling
 - **JMAP Package:** Data parsing, mock client functionality, helper functions, and the real Client's requests and responses via a fake JMAP server (`newFakeJMAPServer` in `fakeserver_test.go`), including authentication against its session resource and bearer-token check
 - **Similarity Package:** Fuzzy matching algorithms, Levenshtein distance, email similarity

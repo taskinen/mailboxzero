@@ -1,5 +1,6 @@
 # Mailbox Zero Configuration Example
-# Copy this file to config.yaml and update with your settings
+# Save this as config.yaml and update it with your settings. An installed
+# binary writes it out with: mailboxzero -example-config > config.yaml
 
 server:
   port: 8080
