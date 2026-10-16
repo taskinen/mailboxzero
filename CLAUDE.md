@@ -23,8 +23,8 @@ Mailbox Zero is a Go-based web application that helps users clean up their Fastm
 ### Project Structure
 ```
 mailboxzero/
-├── main.go                     # Application entry point: flags -config, -version (Go's build info) and -example-config (embeds config.yaml.example)
-├── main_test.go                # Version string, the embedded example config and the missing-config message
+├── main.go                     # Application entry point: flags -config (default ~/.config/mailboxzero/config.yaml, `defaultConfigPath`), -version and -example-config (embeds config.yaml.example)
+├── main_test.go                # Default config path, the embedded example config and the missing-config message
 ├── go.mod / go.sum             # Go module dependencies (gorilla/mux, yaml.v3)
 ├── config.yaml.example         # Configuration template
 ├── config-mock.yaml.example    # Mock-mode configuration template
@@ -58,11 +58,14 @@ mailboxzero/
 │   ├── server/
 │   │   ├── server.go           # HTTP server and API handlers
 │   │   └── server_test.go
-│   └── similarity/
-│       ├── similarity.go       # Fuzzy matching algorithms
-│       ├── candidates.go       # Index of the email pairs that could reach the threshold
-│       ├── candidates_test.go  # Checks the fast grouping against comparing every pair
-│       └── similarity_test.go
+│   ├── similarity/
+│   │   ├── similarity.go       # Fuzzy matching algorithms
+│   │   ├── candidates.go       # Index of the email pairs that could reach the threshold
+│   │   ├── candidates_test.go  # Checks the fast grouping against comparing every pair
+│   │   └── similarity_test.go
+│   └── version/
+│       ├── version.go          # The running binary's version from Go's build info: String() for -version and the log, Short() for the page header
+│       └── version_test.go
 └── web/
     ├── web.go                  # Embeds templates/ and static/ into the binary
     ├── templates/
@@ -142,6 +145,7 @@ mailboxzero/
   - Modal confirmation dialogs
   - Async API communication. Inbox and Find Similar requests are numbered (`inboxRequest`, `similarRequest` in `app.js`), and an answer to a request that a newer one replaced (or that Clear Results cancelled) is ignored, since answers can arrive out of order
   - Responsive design for mobile/desktop
+  - Version in the header (`.app-version`, from `version.Short()` via `PageData.Version`): the release version (`v1.0.0`), otherwise the commit of the build (`59b1469`, `-dirty` with uncommitted changes), or `dev` for `go run`; hovering shows `version.String()`
 
 ## Key Features Implemented
 
@@ -253,17 +257,20 @@ default_similarity: 60          # Default similarity percentage (0-100)
 go mod download
 go mod tidy
 
-# Create configuration file from example (an installed binary prints the same
-# file with: mailboxzero -example-config > config.yaml)
-cp config.yaml.example config.yaml
-# Edit config.yaml with your Fastmail API token
+# Create the configuration file where the app looks by default,
+# ~/.config/mailboxzero/config.yaml ($XDG_CONFIG_HOME/mailboxzero/config.yaml
+# when that is set), from the example (an installed binary prints the same
+# file with -example-config), and add your Fastmail API token
+mkdir -p ~/.config/mailboxzero
+cp config.yaml.example ~/.config/mailboxzero/config.yaml
 
 # Run the application (always the package ".", not main.go, so every file of
 # package main is included)
 go run .
 
-# Run with custom config
-go run . -config custom-config.yaml
+# Run with another config file, for example one in the repository
+# (config.yaml is git-ignored)
+go run . -config config.yaml
 
 # Build for production (a single binary that includes the web page)
 go build -o mailboxzero .
@@ -279,11 +286,8 @@ go build -o mailboxzero .
 For development and testing purposes, you can run the application in mock mode:
 
 ```bash
-# Copy the mock configuration
-cp config-mock.yaml.example config.yaml
-
-# Run in mock mode - no Fastmail credentials needed
-go run .
+# Run in mock mode with the mock configuration - no Fastmail credentials needed
+go run . -config config-mock.yaml.example
 ```
 
 **Mock Mode Features:**
@@ -349,12 +353,13 @@ golangci-lint run
    go build -o mailboxzero .
    ```
 
-2. **Create Production Config:**
+2. **Create Production Config** in the default location:
    ```bash
-   cp config.yaml.example config.yaml
+   mkdir -p ~/.config/mailboxzero
+   ./mailboxzero -example-config > ~/.config/mailboxzero/config.yaml
    ```
    
-   Then edit `config.yaml`:
+   Then edit it:
    ```yaml
    server:
      port: 8080
@@ -364,9 +369,9 @@ golangci-lint run
    dry_run: false      # Enable real operations
    ```
 
-3. **Run Binary:**
+3. **Run Binary** (`-config` points to a config file elsewhere):
    ```bash
-   ./mailboxzero -config production-config.yaml
+   ./mailboxzero
    ```
 
 ### Remote Access
@@ -458,6 +463,7 @@ The project includes unit tests for every package under `internal/` and for the 
 - **JMAP Package:** Data parsing, mock client functionality, helper functions, and the real Client's requests and responses via a fake JMAP server (`newFakeJMAPServer` in `fakeserver_test.go`), including authentication against its session resource and bearer-token check
 - **Similarity Package:** Fuzzy matching algorithms, Levenshtein distance, email similarity
 - **Server Package:** HTTP handlers, API endpoints, and request/response handling
+- **Version Package:** the version description and the header label for releases, pseudo-versions, uncommitted changes and `go run`
 - **End-to-End (`e2e/tests/`):** Playwright tests that drive the UI in Chrome against the server in mock mode (see Testing Commands)
 
 Tests follow Go best practices:

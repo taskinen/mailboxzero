@@ -9,7 +9,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>Mailbox Zero</h1>
+            <h1>Mailbox Zero <span class="app-version" title="{{.VersionDetail}}">{{.Version}}</span></h1>
             <div class="status-bar">
                 {{if .DryRun}}
                     <div class="dry-run-warning">

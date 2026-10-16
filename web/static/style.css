@@ -32,6 +32,15 @@ header h1 {
     font-size: 2em;
 }
 
+/* The release version, or the commit of a development build. */
+header h1 .app-version {
+    margin-left: 6px;
+    font-size: 0.4em;
+    font-weight: normal;
+    color: #95a5a6;
+    vertical-align: middle;
+}
+
 .status-bar {
     display: flex;
     justify-content: space-between;
