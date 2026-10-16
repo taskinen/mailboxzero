@@ -408,7 +408,7 @@ CMD ["./mailboxzero"]
 - **Symptom:** "Failed to authenticate" error
 - **Solutions:**
   1. Verify Fastmail API token is correct
-  2. Generate new API token in Fastmail settings (Settings → Privacy & Security → Integrations)
+  2. Generate new API token in Fastmail settings (Settings → Privacy & Security → Connected apps & API tokens → Manage API tokens → New API token)
   3. Ensure JMAP is enabled in account settings
   4. Check network connectivity to api.fastmail.com
 

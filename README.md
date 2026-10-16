@@ -62,8 +62,8 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 ### Getting Fastmail API Token
 
 1. Log into your Fastmail account
-2. Go to Settings → Privacy & Security → Integrations
-3. Click "New API Token"
+2. Go to Settings → Privacy & Security → Connected apps & API tokens
+3. Click "Manage API tokens", then "New API token"
 4. Set the scope to "Mail" access
 5. Generate the token and copy it to your config file
 
