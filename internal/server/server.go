@@ -45,6 +45,14 @@ const (
 	idleTimeout       = 2 * time.Minute
 )
 
+// contentSecurityPolicy lets the page use only its own script, stylesheet,
+// images and API, with no inline script, event handler attributes or style
+// attributes, so markup that ever slips into the page can neither run nor
+// load anything. frame-ancestors keeps other sites from showing the page in
+// a frame. img-src allows the browser's own request for /favicon.ico.
+const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; " +
+	"connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
 type Server struct {
 	config     *config.Config
 	jmapClient jmap.JMAPClient
@@ -84,8 +92,10 @@ func (s *Server) Start() error {
 // Handler returns the HTTP handler that serves the UI, static files and API.
 //
 // Listening on localhost only keeps other machines out, but every website
-// open in the user's browser can still send requests here. Two checks run
-// before the router:
+// open in the user's browser can still send requests here, or show the page
+// in a frame. Three layers run before the router:
+//   - securityHeaders tells the browser, on every response (refusals too),
+//     what the page may load and run, and not to show it in a frame.
 //   - localhostOnly refuses requests addressed to any other host name, which
 //     stops DNS rebinding (a foreign domain re-pointed at 127.0.0.1).
 //   - CrossOriginProtection refuses cross-origin POSTs, so another site cannot
@@ -103,7 +113,20 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/api/unarchive", s.handleUnarchive).Methods("POST")
 	r.HandleFunc("/api/clear", s.handleClear).Methods("POST")
 
-	return localhostOnly(http.NewCrossOriginProtection().Handler(r))
+	return securityHeaders(localhostOnly(http.NewCrossOriginProtection().Handler(r)))
+}
+
+// securityHeaders sets the Content-Security-Policy, refuses framing (also
+// for browsers that only know X-Frame-Options) and stops the browser from
+// guessing a response's type, so a response is never run as something else.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // localhostOnly serves only requests whose Host header names this machine.

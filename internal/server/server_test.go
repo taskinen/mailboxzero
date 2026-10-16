@@ -1532,3 +1532,68 @@ func TestHandleGetEmail(t *testing.T) {
 		})
 	}
 }
+
+// Every response, including refusals, tells the browser to run only the
+// app's own scripts and styles and never to show the page in a frame.
+func TestHandler_SecurityHeaders(t *testing.T) {
+	server := setupTestServer(t)
+	handler := server.Handler()
+
+	tests := []struct {
+		name     string
+		method   string
+		path     string
+		host     string
+		headers  map[string]string
+		want     int
+		wantType string // a part of Content-Type that nosniff relies on
+	}{
+		{name: "page", method: "GET", path: "/", want: http.StatusOK, wantType: "text/html"},
+		{name: "script", method: "GET", path: "/static/app.js", want: http.StatusOK, wantType: "javascript"},
+		{name: "stylesheet", method: "GET", path: "/static/style.css", want: http.StatusOK, wantType: "text/css"},
+		{name: "API", method: "GET", path: "/api/emails", want: http.StatusOK, wantType: "application/json"},
+		{name: "not found", method: "GET", path: "/no-such-page", want: http.StatusNotFound},
+		{name: "foreign host", method: "GET", path: "/", host: "evil.example:8080", want: http.StatusForbidden},
+		{
+			name: "cross-site POST", method: "POST", path: "/api/clear",
+			headers: map[string]string{"Sec-Fetch-Site": "cross-site"}, want: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req.Host = "localhost:8080"
+			if tt.host != "" {
+				req.Host = tt.host
+			}
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.want {
+				t.Errorf("status = %d, want %d", w.Code, tt.want)
+			}
+			if got := w.Header().Get("X-Frame-Options"); got != "DENY" {
+				t.Errorf("X-Frame-Options = %q, want DENY", got)
+			}
+			if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+			var directives []string
+			for _, directive := range strings.Split(w.Header().Get("Content-Security-Policy"), ";") {
+				directives = append(directives, strings.TrimSpace(directive))
+			}
+			for _, want := range []string{"default-src 'none'", "script-src 'self'", "style-src 'self'", "frame-ancestors 'none'"} {
+				if !slices.Contains(directives, want) {
+					t.Errorf("Content-Security-Policy %q lacks %q", w.Header().Get("Content-Security-Policy"), want)
+				}
+			}
+			if got := w.Header().Get("Content-Type"); !strings.Contains(got, tt.wantType) {
+				t.Errorf("Content-Type = %q, want it to contain %q", got, tt.wantType)
+			}
+		})
+	}
+}

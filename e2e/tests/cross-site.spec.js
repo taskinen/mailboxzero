@@ -42,3 +42,24 @@ test('a page on another site cannot archive emails through the browser', async (
     await new Promise((resolve) => attacker.close(resolve));
   }
 });
+
+// A site that could show the app in a frame (say, invisibly over its own
+// buttons) could trick the user into clicking Archive & Find Next.
+test('a page on another site cannot show the app in a frame', async ({ page, baseURL }) => {
+  const attacker = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.end(`<!doctype html><title>Some other site</title><iframe src="${baseURL}/"></iframe>`);
+  });
+  await new Promise((resolve) => attacker.listen(attackerPort, '127.0.0.1', resolve));
+
+  try {
+    // The browser does ask the app for the page; it just must not show it.
+    const appRequest = page.waitForRequest(`${baseURL}/`);
+    await page.goto(`http://127.0.0.1:${attackerPort}/`);
+    await appRequest;
+
+    await expect(page.frameLocator('iframe').locator('#inbox-list')).toHaveCount(0);
+  } finally {
+    await new Promise((resolve) => attacker.close(resolve));
+  }
+});
