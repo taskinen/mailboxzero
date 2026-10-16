@@ -408,9 +408,11 @@ class MailboxZero {
             this.archiveStatusText.classList.add('glow');
             this.archiveUndoBtn.style.display = 'none';
             this.lastArchivedIds = [];
+            this.loadEmails(); // The emails are back in the inbox
         } catch (error) {
             console.error('Error undoing archive:', error);
             this.showArchiveError(this.failureMessage(error, 'unarchive'));
+            this.loadEmails(); // Some emails may have moved back before the failure
         }
     }
 

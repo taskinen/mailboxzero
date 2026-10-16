@@ -68,15 +68,21 @@ test('an archive that cannot reach the server says so', async ({ page }) => {
   await expectArchiveError(page, 'Failed to archive emails: could not reach the server');
 });
 
-test('a failed undo shows why', async ({ page }) => {
+test('a failed undo shows why and reloads the inbox', async ({ page }) => {
   await findSimilar(page);
   // The archive itself goes through (mock mode) ...
+  const nextSearch = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/similar');
   await page.click('#archive-find-next-btn');
   await expect(page.locator('#archive-status-text')).toHaveText(/^Successfully archived/);
+  // The inbox reload after the archive comes before the next search.
+  await nextSearch;
 
   // ... but the server rejects the undo.
   await failWith(page, '/api/unarchive', unarchiveError);
+  const inbox = countInboxLoads(page);
   await page.click('#archive-undo-btn');
 
   await expectArchiveError(page, unarchiveError);
+  // Some emails may have moved back before the server gave up.
+  await expect.poll(() => inbox.loads).toBeGreaterThan(0);
 });

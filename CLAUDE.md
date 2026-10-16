@@ -147,7 +147,7 @@ mailboxzero/
 3. **Confirmation Dialogs:** Required before the standard "Archive Selected" write operation (the opt-in "Archive & Find Next" button intentionally skips it for rapid sweeping)
 4. **Visual Warnings:** Clear UI indicators when in dry run mode
 5. **API Token Authentication:** Secure authentication using Fastmail API tokens
-6. **Undo Archive:** After every successful archive, a status pill with an "Undo" button appears in the top-right of the action bar. Undo POSTs the last-archived IDs to `/api/unarchive`, which moves them back to the inbox. Undo does not refresh the similar-emails pane — the restored emails reappear on the next Refresh or Find Similar. After Undo, the status text changes to "Unarchived N e-mail(s)" with a glow animation (`undoGlow` in `style.css`).
+6. **Undo Archive:** After every successful archive, a status pill with an "Undo" button appears in the top-right of the action bar. Undo POSTs the last-archived IDs to `/api/unarchive`, which moves them back to the inbox. Undo then reloads the inbox, so the restored emails and the inbox count come back right away (a failed Undo reloads it too, since some emails may have moved back); the similar-emails pane is left as it is until the next Find Similar. After Undo, the status text changes to "Unarchived N e-mail(s)" with a glow animation (`undoGlow` in `style.css`).
 7. **Flagged Emails Stay Unselected:** In a group of similar emails, every email starts selected except those flagged in Fastmail (`$flagged` keyword), which show a ⚑ marker; unread emails (no `$seen`) show a blue dot. Select All still includes flagged emails
 
 ### ✅ Core Functionality
