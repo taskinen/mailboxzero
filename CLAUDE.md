@@ -193,7 +193,7 @@ default_similarity: 60          # Default similarity percentage (0-100)
 - **Browser Protections:** `Handler()` wraps the router in `localhostOnly` (403 unless the `Host` header is a loopback name, which stops DNS rebinding) and Go's `http.CrossOriginProtection` (403 for cross-origin `POST`s via `Sec-Fetch-Site`/`Origin`, which stops cross-site request forgery). `e2e/tests/cross-site.spec.js` checks the latter in a real browser
 - **API Tokens:** Use Fastmail API tokens for secure authentication
 - **Local Processing:** All similarity calculations happen locally
-- **Minimal Permissions:** Only requires read access to inbox and write to archive
+- **Minimal Permissions:** Uses only the JMAP Core and Mail capabilities (`urn:ietf:params:jmap:mail`), and its only changes move emails between the inbox and the archive
 - **No External Services:** No data sent to third-party services
 
 ## API Endpoints
@@ -445,7 +445,7 @@ log.SetFlags(log.LstdFlags | log.Lshortfile)
 6. **Comprehensive Testing:** Unit tests for every package under `internal/` (table-driven where it fits), plus Playwright end-to-end tests of the UI
 
 ### Test Coverage
-The project includes comprehensive unit tests for all packages:
+The project includes unit tests for every package under `internal/` (`main` and `web` have none):
 - **Config Package:** Configuration loading, validation, and error handling
 - **JMAP Package:** Data parsing, mock client functionality, helper functions, and the real Client's requests and responses via a fake JMAP server (`newFakeJMAPServer` in `fakeserver_test.go`), including authentication against its session resource and bearer-token check
 - **Similarity Package:** Fuzzy matching algorithms, Levenshtein distance, email similarity
