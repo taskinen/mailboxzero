@@ -911,12 +911,15 @@ class MailboxZero {
         
         // First try to find text body content using textBody structure
         if (email.bodyValues && email.textBody && email.textBody.length > 0) {
-            // Look for text parts first (preferred for preview)
+            // Look for text parts first (preferred for preview). An email
+            // with only an HTML body lists that HTML part here too.
             for (const part of email.textBody) {
                 if (part.partId && email.bodyValues[part.partId]) {
                     const bodyValue = email.bodyValues[part.partId];
                     if (bodyValue.value && bodyValue.value.trim()) {
-                        bodyContent = bodyValue.value;
+                        bodyContent = part.type === 'text/html'
+                            ? this.htmlToText(bodyValue.value)
+                            : bodyValue.value;
                         break;
                     }
                 }
