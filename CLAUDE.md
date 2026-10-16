@@ -2,7 +2,7 @@
 
 ## Project Status: ✅ COMPLETED
 
-**Last Updated:** October 11, 2026 (README refresh)
+**Last Updated:** October 16, 2026 (documentation sync)
 **Version:** 1.0
 **Status:** Production Ready (with dry run safety)
 
@@ -31,6 +31,8 @@ mailboxzero/
 ├── LICENSE                     # MIT license
 ├── README.md                   # User documentation
 ├── CLAUDE.md                   # Development documentation (this file)
+├── docs/
+│   └── screenshot.png          # App screenshot shown in README.md
 ├── .github/
 │   ├── dependabot.yml          # Weekly dependency update PRs: Go modules, GitHub Actions, e2e npm
 │   └── workflows/
@@ -79,6 +81,7 @@ mailboxzero/
   - JMAP endpoint and credentials
   - Dry run safety toggle
   - Default similarity threshold
+  - Mock mode toggle (`mock_mode`)
 
 #### 2. JMAP Client (`internal/jmap/`)
 - **Files:** `client.go`, `email.go`, `mock.go`
@@ -167,6 +170,7 @@ mailboxzero/
 4. **Keyboard:** Shortcuts `F` (Find Similar), `A` (Archive & Find Next), `U` (Undo), `R` (Refresh), `C` (Clear Results) and `Escape` (close the preview or the archive dialog), handled by `handleShortcut()` in `app.js`. They are ignored in a drop-down, with Ctrl/Cmd/Alt, and while the archive dialog is open. The buttons show them in `title` and `aria-keyshortcuts`. Inbox rows are focusable buttons (`aria-pressed` when chosen): Enter or Space chooses one, and ArrowUp/ArrowDown move between inbox rows or between the checkboxes of the similar emails
 5. **Performance:** Efficient API calls and client-side caching
 6. **Empty Inbox:** An empty inbox shows "Inbox zero!" instead of a blank list, pagination never shows "Page 1 of 0", and a last page that was emptied in the meantime falls back to the new last page (`loadEmails()` in `app.js`)
+7. **Email Preview:** Hovering an email in either pane for 300 ms shows a popup with its subject, sender, date and body (`showEmailPreview()` in `app.js`). `loadPreviewBody()` fetches the body from `GET /api/emails/{id}` the first time and keeps it on the email object; it prefers the text body and shows an HTML-only body as plain text. The Previews checkbox in the action bar turns previews off
 
 ## Configuration Details
 
@@ -280,6 +284,7 @@ go run main.go
 - Sample emails include groups of similar messages for testing similarity matching
 - Simulates archiving operations without affecting real emails
 - Perfect for development, testing, and demonstrations
+- Each sender's newest email is unread and one Stripe email is flagged, so the unread and flagged markers show
 - The same 41 emails (senders, subjects, content, IDs) on every run; only the dates move with today so the inbox always looks recent
 
 **Mock Configuration:**
@@ -381,7 +386,7 @@ CMD ["./mailboxzero"]
 
 ### Current Limitations
 1. **Single Account:** Only supports one Fastmail account at a time
-2. **Memory Usage:** Loads all emails into memory for processing
+2. **Newest 10,000 Emails:** Find Similar loads the newest 10,000 inbox emails (`maxSimilarityEmails`, summaries without bodies) into memory and only matches among them. Older emails are never found as matches; a targeted older email is compared against those 10,000
 3. **No Persistent Storage:** No database for tracking operations
 4. **Bearer Token Authentication:** Uses API tokens instead of OAuth2
 5. **Local Access Only:** No login or HTTPS; the server only binds to loopback, so remote use needs an SSH tunnel
@@ -390,11 +395,10 @@ CMD ["./mailboxzero"]
 1. **Multi-Account Support:** Support multiple email accounts
 2. **Database Integration:** SQLite for operation history and caching
 3. **Advanced Filters:** Date ranges, sender whitelist, size limits
-4. **Batch Operations:** Process large inboxes in chunks
-5. **Email Preview:** Full email content preview before archiving
-6. **Statistics Dashboard:** Email cleanup metrics and reports
-7. **API Rate Limiting:** Respect JMAP API rate limits
-8. **OAuth2 Support:** Modern authentication flow
+4. **Larger Inboxes:** Find matches beyond the newest 10,000 emails (fetching already happens in JMAP requests of up to 1000 emails)
+5. **Statistics Dashboard:** Email cleanup metrics and reports
+6. **API Rate Limiting:** Respect JMAP API rate limits
+7. **OAuth2 Support:** Modern authentication flow
 
 ## Troubleshooting Guide
 
@@ -438,7 +442,7 @@ log.SetFlags(log.LstdFlags | log.Lshortfile)
 3. **Interface Design:** Clean separation of concerns
 4. **Memory Management:** Efficient string operations and minimal allocations
 5. **Concurrency Safety:** Thread-safe operations where needed
-6. **Comprehensive Testing:** Full unit test coverage with table-driven tests
+6. **Comprehensive Testing:** Unit tests for every package under `internal/` (table-driven where it fits), plus Playwright end-to-end tests of the UI
 
 ### Test Coverage
 The project includes comprehensive unit tests for all packages:
@@ -446,6 +450,7 @@ The project includes comprehensive unit tests for all packages:
 - **JMAP Package:** Data parsing, mock client functionality, helper functions, and the real Client's requests and responses via a fake JMAP server (`newFakeJMAPServer` in `fakeserver_test.go`), including authentication against its session resource and bearer-token check
 - **Similarity Package:** Fuzzy matching algorithms, Levenshtein distance, email similarity
 - **Server Package:** HTTP handlers, API endpoints, and request/response handling
+- **End-to-End (`e2e/tests/`):** Playwright tests that drive the UI in Chrome against the server in mock mode (see Testing Commands)
 
 Tests follow Go best practices:
 - Table-driven test design for multiple scenarios
