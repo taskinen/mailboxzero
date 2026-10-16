@@ -61,12 +61,14 @@ jobs:
         go test ./... -v -race 2>&1 | tee test-output.txt || true
         cat test-output.txt | go-junit-report -set-exit-code > test-results.xml
 
-    # Coverage is measured in a second run without -race. Together, every
-    # coverage counter update is an atomic operation that the race detector
-    # checks, and the similarity tests took about a minute instead of a few
-    # seconds without finding anything more. The coverage is the same.
+    # Coverage is measured in a second run, without -race and in the default
+    # mode. With -race, every coverage counter update is an atomic operation
+    # that the race detector checks, and the similarity tests took about a
+    # minute instead of a few seconds without finding anything more. Atomic
+    # updates are slow on the runner even without -race. The coverage is the
+    # same in every mode.
     - name: Measure coverage
-      run: go test ./... -coverprofile=coverage.out -covermode=atomic
+      run: go test ./... -coverprofile=coverage.out
 
     - name: Generate coverage report
       run: |
