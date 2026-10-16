@@ -112,7 +112,7 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 - **Select All/None**: Quickly select or deselect all found similar emails
 - **Individual Selection**: Click on specific emails to select/deselect them
 - **Clear Results**: Remove all results from the right pane to start fresh
-- **Email Preview**: Hover over an email in either pane to see its subject, sender, date and body in a popup; the Previews checkbox turns this off
+- **Email Preview**: Hover over an email in either pane to see its subject, sender, date and body in a popup (as text only: a preview never loads an email's images or runs its scripts); the Previews checkbox turns this off
 
 ### Keyboard Shortcuts
 
