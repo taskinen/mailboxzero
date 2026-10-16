@@ -30,6 +30,16 @@ const bodies = [
     name: 'HTML body values without body parts',
     body: { bodyValues: { 1: { value: html } } },
   },
+  {
+    // JMAP (RFC 8621) lists the only part of an HTML-only email as its text
+    // body as well as its HTML body.
+    name: 'an HTML-only email',
+    body: {
+      bodyValues: { 1: { value: html } },
+      textBody: [{ partId: '1', type: 'text/html' }],
+      htmlBody: [{ partId: '1', type: 'text/html' }],
+    },
+  },
 ];
 
 for (const { name, body } of bodies) {
@@ -57,7 +67,7 @@ for (const { name, body } of bodies) {
     expect(imageRequests).toBe(0);
     expect(await page.evaluate(() => /** @type {any} */ (window).previewHandlerRan)).toBeUndefined();
     expect(await page.evaluate(() => /** @type {any} */ (window).previewScriptRan)).toBeUndefined();
-    for (const text of ['Head title', 'head-style', 'body-style', 'previewScriptRan']) {
+    for (const text of ['Head title', 'head-style', 'body-style', 'previewScriptRan', '<p>']) {
       await expect(preview).not.toContainText(text);
     }
   });
