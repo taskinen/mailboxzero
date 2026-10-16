@@ -18,7 +18,7 @@ module.exports = defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'go run main.go -config e2e/config-e2e.yaml',
+    command: 'go run . -config e2e/config-e2e.yaml',
     cwd: '..',
     url: `http://localhost:${port}`,
     reuseExistingServer: false,
