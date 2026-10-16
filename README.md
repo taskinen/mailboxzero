@@ -23,7 +23,7 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 ## Safety Features
 
 - **DRY RUN MODE**: All write operations are disabled by default; archiving then only says how many emails it would have archived
-- **Archive Only**: The only write operation is moving emails to archive (never deletes); any other labels on an email are kept
+- **Archive Only**: The only write operations move emails from the inbox to the archive and, with Undo, back again (never deletes); any other labels on an email are kept
 - **Confirmation Dialog**: Required before archiving via "Archive Selected" (the opt-in "Archive & Find Next" button intentionally skips it)
 - **Undo Archive**: An "Undo" button appears after each successful archive and moves the affected messages back to the inbox via `POST /api/unarchive`
 - **Visual Warnings**: Clear indication when in dry run mode
@@ -89,7 +89,7 @@ cp config-mock.yaml.example config.yaml
 go run main.go
 ```
 
-Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JMAP endpoint and API token are not required. Keep `dry_run: true` here too — archive operations simulate against the in-memory sample emails.
+Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JMAP endpoint and API token are not required, and Fastmail is never contacted. With `dry_run: true`, as in the example, archiving changes nothing; with `dry_run: false` it removes the archived emails from the in-memory sample inbox (Undo puts them back), until the server restarts.
 
 ## Usage
 
@@ -110,6 +110,7 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 - **Select All/None**: Quickly select or deselect all found similar emails
 - **Individual Selection**: Click on specific emails to select/deselect them
 - **Clear Results**: Remove all results from the right pane to start fresh
+- **Email Preview**: Hover over an email in either pane to see its subject, sender, date and body in a popup; the Previews checkbox turns this off
 
 ### Keyboard Shortcuts
 
@@ -170,7 +171,7 @@ To stay fast on large inboxes, grouping only compares emails that could reach th
 - **Localhost Only**: The web UI has no login, so the server only listens on this machine. `server.host` must be `localhost`, `127.0.0.1` or `::1`; anything else (including `0.0.0.0`) is rejected at startup. To use it from another machine, forward the port over SSH (`ssh -L 8080:localhost:8080 your-server`) and open http://localhost:8080 locally
 - **Browser Protections**: Other websites open in your browser cannot use the app: requests addressed to any host name but localhost are refused (blocking DNS rebinding), and cross-origin `POST` requests are refused (blocking cross-site request forgery)
 - **API Tokens**: Use Fastmail API tokens for secure authentication
-- **Local Only**: All processing happens locally - no data sent to external servers
+- **Local Only**: All processing happens locally; the server sends requests only to Fastmail's JMAP API
 - **Read-Heavy**: Only reads email data, minimal write operations
 - **Archive Only**: Never deletes emails, only moves them to archive
 
@@ -196,7 +197,9 @@ The project structure:
 ```
 mailboxzero/
 ├── main.go                 # Application entry point
-├── config.yaml            # Configuration file
+├── config.yaml.example     # Configuration template (copy to config.yaml)
+├── config-mock.yaml.example # Mock-mode configuration template
+├── e2e/                    # Playwright end-to-end tests
 ├── internal/
 │   ├── config/            # Configuration handling
 │   ├── jmap/              # JMAP client implementation
@@ -210,7 +213,7 @@ mailboxzero/
 
 ### Running Tests
 
-The project includes comprehensive unit tests for all packages:
+The project includes unit tests for every package under `internal/`:
 
 ```bash
 # Run all tests
