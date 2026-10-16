@@ -29,35 +29,54 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 - **Visual Warnings**: Clear indication when in dry run mode
 - **Flagged Emails Stay**: Emails you flagged in Fastmail start unselected in a group of similar emails, so archiving the group leaves them in your inbox unless you select them
 
-## Setup
+## Installation
 
-### Prerequisites
+Mailbox Zero is a single program that serves its web page on your own computer. You need a Fastmail account and a Fastmail API token ([below](#getting-fastmail-api-token)). Install the program in one of two ways.
 
-- Go 1.26 or later
-- Fastmail account with JMAP access
-- Fastmail API token (generated from account settings)
+### With Go
 
-### Installation
+With [Go](https://go.dev/dl/) 1.26 or later (Go 1.21 or later downloads Go 1.26 by itself):
 
-1. Clone/download the project
-2. Install dependencies:
+```bash
+go install github.com/taskinen/mailboxzero@latest
+```
+
+This builds the latest release and puts the `mailboxzero` program in `$(go env GOPATH)/bin`, usually `~/go/bin`. Make sure that folder is on your `PATH`.
+
+### Ready-built program
+
+Download the archive for your system from the [latest release](https://github.com/taskinen/mailboxzero/releases/latest), together with `checksums.txt`: `mailboxzero_<version>_<os>_<arch>.tar.gz`, or `.zip` for Windows. The `<os>` is `linux`, `darwin` (macOS) or `windows`, and the `<arch>` is `amd64` (Intel and AMD) or `arm64` (Apple silicon and other ARM).
+
+1. Check the download, in the folder you downloaded to:
    ```bash
-   go mod download
+   sha256sum --ignore-missing -c checksums.txt       # Linux
+   shasum -a 256 --ignore-missing -c checksums.txt   # macOS
    ```
-3. Create your configuration file:
-   ```bash
-   cp config.yaml.example config.yaml
-   ```
+2. Unpack it. Its folder holds the `mailboxzero` program (`mailboxzero.exe` on Windows), an example config, this README and the license. Move the program to a folder on your `PATH`, such as `~/.local/bin` or `/usr/local/bin`.
+3. The programs are not signed by Apple or Microsoft:
+   - **macOS** blocks a program downloaded with a browser. Allow it once with `xattr -d com.apple.quarantine mailboxzero`, or start it, then choose System Settings → Privacy & Security → Open Anyway.
+   - **Windows** SmartScreen may warn when you start it; choose More info → Run anyway.
 
-4. Edit `config.yaml` with your Fastmail API token:
-   ```yaml
-   jmap:
-     endpoint: "https://api.fastmail.com/jmap/session"
-     api_token: "your-api-token-here"
-   
-   # IMPORTANT: Set to false only when ready for real changes
-   dry_run: true
+### First Run
+
+1. Create the configuration file where Mailbox Zero looks for it, `~/.config/mailboxzero/config.yaml`:
+   ```bash
+   mkdir -p ~/.config/mailboxzero
+   mailboxzero -example-config > ~/.config/mailboxzero/config.yaml
+   chmod 600 ~/.config/mailboxzero/config.yaml   # it will hold your API token
    ```
+   If you set `XDG_CONFIG_HOME`, the file is `$XDG_CONFIG_HOME/mailboxzero/config.yaml` instead. On Windows it is `%USERPROFILE%\.config\mailboxzero\config.yaml`; in PowerShell:
+   ```powershell
+   mkdir $HOME\.config\mailboxzero
+   mailboxzero -example-config > $HOME\.config\mailboxzero\config.yaml
+   ```
+   To use a file somewhere else, start the program with `-config /path/to/config.yaml`.
+2. Put your [Fastmail API token](#getting-fastmail-api-token) in the file's `api_token`.
+3. Start the program:
+   ```bash
+   mailboxzero
+   ```
+4. Open http://localhost:8080. Dry run mode is on, so nothing changes in your mailbox until you [enable real changes](#enabling-real-changes); the page shows a warning banner while it is on.
 
 ### Getting Fastmail API Token
 
@@ -69,26 +88,19 @@ A Go-based web application that helps you clean up your Fastmail inbox by findin
 6. Leave "Read-only access" off if you want to archive. A read-only token is enough while `dry_run` is `true`, since nothing is changed then, but archiving and Undo need to change your mail
 7. Click "Generate API token" and copy the token to your config file
 
-### Running the Application
+### Updating
 
-1. Start the server:
-   ```bash
-   go run main.go
-   ```
+- **With Go:** run `go install github.com/taskinen/mailboxzero@latest` again. To install a particular version, give it instead of `latest`, for example `@v1.0.0`.
+- **Ready-built program:** download the new release as above and replace the program.
 
-2. Open your browser to: http://localhost:8080
-
-3. The application will display a warning banner when in dry run mode
-
-To build a single binary instead, run `go build -o mailboxzero .` The web page is built into it, so you can run it from any directory: `./mailboxzero -config /path/to/config.yaml`.
+`mailboxzero -version` prints the version you have, and the web page shows it next to the title. The [release notes](https://github.com/taskinen/mailboxzero/releases) say what changed in each version.
 
 ### Mock Mode (no Fastmail account required)
 
-For development, testing, or demos you can run against built-in sample data instead of a real Fastmail inbox:
+For development, testing, or demos you can run against built-in sample data instead of a real Fastmail inbox. In a checkout of this repository:
 
 ```bash
-cp config-mock.yaml.example config.yaml
-go run main.go
+go run . -config config-mock.yaml.example
 ```
 
 Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JMAP endpoint and API token are not required, and Fastmail is never contacted. With `dry_run: true`, as in the example, archiving changes nothing; with `dry_run: false` it removes the archived emails from the in-memory sample inbox (Undo puts them back), until the server restarts.
@@ -131,7 +143,7 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 
 **⚠️ WARNING**: Only disable dry run mode when you're confident the application works correctly with your mailbox.
 
-1. Edit `config.yaml`:
+1. Edit your config file (`~/.config/mailboxzero/config.yaml`, or the one you give with `-config`):
    ```yaml
    dry_run: false
    ```
@@ -141,6 +153,8 @@ Mock mode is enabled by setting `mock_mode: true` in the config; when on, the JM
 4. Archive operations will now actually move emails
 
 ## Configuration Options
+
+The configuration file is `~/.config/mailboxzero/config.yaml` (`$XDG_CONFIG_HOME/mailboxzero/config.yaml` when `XDG_CONFIG_HOME` is set), or the file given with `-config`. `mailboxzero -example-config` prints a complete example:
 
 ```yaml
 server:
@@ -179,6 +193,10 @@ To stay fast on large inboxes, grouping only compares emails that could reach th
 
 ## Troubleshooting
 
+### Config File Not Found
+- The program prints where it looked and the commands that create the file (see [First Run](#first-run))
+- Give a file in another place with `-config /path/to/config.yaml`
+
 ### Authentication Errors
 - Verify your Fastmail API token is correct
 - Ensure JMAP is enabled in your Fastmail account
@@ -195,18 +213,32 @@ To stay fast on large inboxes, grouping only compares emails that could reach th
 
 ## Development
 
+Run it from a checkout of the source:
+
+```bash
+git clone https://github.com/taskinen/mailboxzero.git
+cd mailboxzero
+go run .                       # reads ~/.config/mailboxzero/config.yaml, like the installed program
+go run . -config config.yaml   # or a config file in the checkout (git-ignored)
+go build -o mailboxzero .      # a single program with the web page built in
+```
+
+Run the package (`.`), not `main.go`: only then does Go record the commit in the program, which `-version` and the web page show. Releases are made with [GoReleaser](https://goreleaser.com/) from version tags; see `.goreleaser.yaml`.
+
 The project structure:
 ```
 mailboxzero/
 ├── main.go                 # Application entry point
-├── config.yaml.example     # Configuration template (copy to config.yaml)
+├── .goreleaser.yaml        # Release builds
+├── config.yaml.example     # Configuration template (printed by -example-config)
 ├── config-mock.yaml.example # Mock-mode configuration template
 ├── e2e/                    # Playwright end-to-end tests
 ├── internal/
 │   ├── config/            # Configuration handling
 │   ├── jmap/              # JMAP client implementation
 │   ├── server/            # Web server and API handlers
-│   └── similarity/        # Email similarity algorithms
+│   ├── similarity/        # Email similarity algorithms
+│   └── version/           # Version from Go's build information
 └── web/
     ├── web.go             # Builds templates and static files into the binary
     ├── templates/         # HTML templates
@@ -215,7 +247,7 @@ mailboxzero/
 
 ### Running Tests
 
-The project includes unit tests for every package under `internal/`:
+The project includes unit tests for every package under `internal/` and for the program itself (`main_test.go`):
 
 ```bash
 # Run all tests
