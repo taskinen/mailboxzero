@@ -56,10 +56,17 @@ jobs:
     - name: Install go-junit-report
       run: go install github.com/jstemmer/go-junit-report/v2@latest
 
-    - name: Run tests with coverage
+    - name: Run tests
       run: |
-        go test ./... -v -race -coverprofile=coverage.out -covermode=atomic 2>&1 | tee test-output.txt || true
+        go test ./... -v -race 2>&1 | tee test-output.txt || true
         cat test-output.txt | go-junit-report -set-exit-code > test-results.xml
+
+    # Coverage is measured in a second run without -race. Together, every
+    # coverage counter update is an atomic operation that the race detector
+    # checks, and the similarity tests took about a minute instead of a few
+    # seconds without finding anything more. The coverage is the same.
+    - name: Measure coverage
+      run: go test ./... -coverprofile=coverage.out -covermode=atomic
 
     - name: Generate coverage report
       run: |

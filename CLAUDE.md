@@ -34,7 +34,7 @@ mailboxzero/
 ├── .github/
 │   ├── dependabot.yml          # Weekly dependency update PRs: Go modules, GitHub Actions, e2e npm
 │   └── workflows/
-│       └── test.yml            # CI: gofmt check, `go test -race -coverprofile`, Playwright e2e tests
+│       └── test.yml            # CI: gofmt check, `go test -race`, then `-coverprofile` without `-race` (together they are slow), Playwright e2e tests
 ├── e2e/                        # Playwright end-to-end tests, run against the server in mock mode
 │   ├── package.json            # @playwright/test dev dependency (plus package-lock.json)
 │   ├── playwright.config.js    # Starts the server with config-e2e.yaml and drives the installed Chrome
