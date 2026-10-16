@@ -18,11 +18,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v7
 
+    # gofmt needs no Go cache (see the test job).
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
         go-version: '1.26.x'
-        cache: true
+        cache: false
 
     - name: Check Go formatting
       run: |
@@ -48,10 +49,29 @@ jobs:
       uses: actions/checkout@v7
 
     - name: Set up Go
+      id: setup-go
       uses: actions/setup-go@v7
       with:
         go-version: '1.26.x'
-        cache: true
+        cache: false
+
+    # This job saves the Go module and build cache, and the e2e job restores
+    # it. setup-go's own cache is saved by whichever job finishes first,
+    # which was the formatting job before anything had been built, so every
+    # build started from scratch. The key changes with the Go version and
+    # go.sum, the inputs of the packages that take long to build (the
+    # standard library and the dependencies, with and without -race).
+    # -count=1 keeps the test runs from reusing cached test results, so
+    # every test still runs.
+    - name: Cache Go modules and builds
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: go-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum') }}
+        restore-keys: |
+          go-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-
 
     - name: Download dependencies
       run: go mod download
@@ -71,7 +91,7 @@ jobs:
 
     - name: Run tests
       run: |
-        go test ./... -v -race 2>&1 | tee test-output.txt || true
+        go test ./... -v -race -count=1 2>&1 | tee test-output.txt || true
         cat test-output.txt | go-junit-report -set-exit-code > test-results.xml
 
     # Coverage is measured in a second run, without -race and in the default
@@ -81,7 +101,7 @@ jobs:
     # updates are slow on the runner even without -race. The coverage is the
     # same in every mode.
     - name: Measure coverage
-      run: go test ./... -coverprofile=coverage.out
+      run: go test ./... -count=1 -coverprofile=coverage.out
 
     - name: Generate coverage report
       run: |
@@ -129,10 +149,23 @@ jobs:
       uses: actions/checkout@v7
 
     - name: Set up Go
+      id: setup-go
       uses: actions/setup-go@v7
       with:
         go-version: '1.26.x'
-        cache: true
+        cache: false
+
+    # The cache the test job saves (same key) already holds the packages
+    # the server is built from. This job only restores it.
+    - name: Restore Go modules and builds
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: go-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum') }}
+        restore-keys: |
+          go-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-
 
     - name: Set up Node.js
       uses: actions/setup-node@v7
