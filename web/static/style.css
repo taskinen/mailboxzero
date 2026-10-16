@@ -411,6 +411,12 @@ header h1 {
     border-radius: 5px;
 }
 
+/* The pill starts hidden; display: flex above would override the browser's
+   own rule for the hidden attribute. */
+.archive-status[hidden] {
+    display: none;
+}
+
 .archive-status-text {
     color: #1e7e34;
     font-size: 0.9em;
@@ -477,6 +483,10 @@ header h1 {
 .empty-state p {
     margin-bottom: 10px;
     font-size: 0.9em;
+}
+
+.empty-state .error-message {
+    color: #e74c3c;
 }
 
 .modal-overlay {
@@ -634,6 +644,22 @@ header h1 {
 .preview-body em {
     font-style: italic;
     color: #555;
+}
+
+/* Links, addresses and header labels marked up by enhanceEmailFormatting()
+   in app.js. They are classes, not style attributes, because the page's
+   Content-Security-Policy blocks style attributes. */
+.preview-body .preview-link {
+    color: #3498db;
+    text-decoration: underline;
+}
+
+.preview-body .preview-address {
+    color: #3498db;
+}
+
+.preview-body .preview-label {
+    color: #666;
 }
 
 .preview-loading {

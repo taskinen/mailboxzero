@@ -348,7 +348,7 @@ class MailboxZero {
         this.archiveStatus.classList.remove('error');
         this.archiveStatus.classList.toggle('dry-run', Boolean(dryRun));
         this.archiveUndoBtn.style.display = dryRun ? 'none' : '';
-        this.archiveStatus.style.display = '';
+        this.archiveStatus.hidden = false;
     }
 
     // Show a failed archive or undo in the status pill, with the reason,
@@ -359,7 +359,7 @@ class MailboxZero {
         this.archiveStatus.classList.remove('dry-run');
         this.archiveStatus.classList.add('error');
         this.archiveUndoBtn.style.display = 'none';
-        this.archiveStatus.style.display = '';
+        this.archiveStatus.hidden = false;
     }
 
     // Turn a failed response into an Error carrying the server's message,
@@ -795,7 +795,7 @@ class MailboxZero {
     }
 
     showError(container, message) {
-        container.innerHTML = `<div class="empty-state"><p style="color: #e74c3c;">${message}</p></div>`;
+        container.innerHTML = `<div class="empty-state"><p class="error-message">${message}</p></div>`;
     }
 
     showEmpty(container, message) {
@@ -1047,11 +1047,11 @@ class MailboxZero {
         
         // Format URLs (make them look like links without actually being clickable)
         formatted = formatted.replace(/\b(https?:\/\/[\w\-\._~:\/?#\[\]@!\$&'\(\)*\+,;=.]+)/gi, 
-            '<span style="color: #3498db; text-decoration: underline;">$1</span>');
+            '<span class="preview-link">$1</span>');
         
         // Format email addresses  
         formatted = formatted.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, 
-            '<span style="color: #3498db;">$&</span>');
+            '<span class="preview-address">$&</span>');
         
         // Bold text patterns (common email signatures)
         formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -1059,7 +1059,7 @@ class MailboxZero {
         
         // Format common patterns like "From:", "To:", "Subject:" in forwarded emails
         formatted = formatted.replace(/^(From|To|Subject|Date|CC|BCC):\s*/gim, 
-            '<strong style="color: #666;">$1:</strong> ');
+            '<strong class="preview-label">$1:</strong> ');
         
         return formatted;
     }
